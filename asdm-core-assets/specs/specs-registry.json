@@ -1,12 +1,21 @@
 {
   "version": "1.0.0",
+  "dateCreated": "2024-01-01T00:00:00Z",
+  "dateUpdated": "2024-01-01T00:00:00Z",
+  "createdBy": "ASDM Platform",
+  "updatedBy": "ASDM Platform",
   "specs": [
     {
       "id": "reactjs",
       "name": "React.js Development Specs",
       "description": "Coding standards and guidelines for React.js development",
       "version": "1.0.0",
-      "path": "reactjs"
+      "path": "reactjs",
+      "entry-point": "reactjs/README.md",
+      "dateCreated": "2024-01-01T00:00:00Z",
+      "dateUpdated": "2024-01-01T00:00:00Z",
+      "createdBy": "ASDM Platform",
+      "updatedBy": "ASDM Platform"
     }
   ]
 }
