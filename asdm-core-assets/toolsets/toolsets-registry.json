@@ -1,19 +1,45 @@
 {
   "version": "1.0.1",
+  "dateCreated": "2024-01-01T00:00:00Z",
+  "dateUpdated": "2024-01-01T00:00:00Z",
+  "createdBy": "ASDM Platform",
+  "updatedBy": "ASDM Platform",
   "toolsets": [
+    {
+      "id": "sample-toolset",
+      "name": "Sample Toolset",
+      "description": "A sample toolset demonstrating the structure and components of an ASDM toolset.",
+      "version": "0.0.1",
+      "downloadUrl": "sample-toolset.zip",
+      "entry-point": "sample-toolset/README.md",
+      "dateCreated": "2024-01-01T00:00:00Z",
+      "dateUpdated": "2024-01-01T00:00:00Z",
+      "createdBy": "ASDM Platform",
+      "updatedBy": "ASDM Platform"
+    },
     {
       "id": "context-builder",
       "name": "Context Builder",
       "description": "A toolset for building context for a workspace.",
       "version": "0.0.1",
-      "downloadUrl": "context-builder.zip"
+      "downloadUrl": "context-builder.zip",
+      "entry-point": "context-builder/README.md",
+      "dateCreated": "2024-01-01T00:00:00Z",
+      "dateUpdated": "2024-01-01T00:00:00Z",
+      "createdBy": "ASDM Platform",
+      "updatedBy": "ASDM Platform"
     },
     {
       "id": "spec-builder-agile-standard",
       "name": "Spec Builder for Agile Team (Standard version)",
       "description": "Spec Builder for Agile Team (Standard version) is a toolset for building specification documents for a Software Development team who is using Agile methodology.",
       "version": "0.0.1",
-      "downloadUrl": "spec-builder-agile-standard.zip"
+      "downloadUrl": "spec-builder-agile-standard.zip",
+      "entry-point": "spec-builder-agile-standard/README.md",
+      "dateCreated": "2024-01-01T00:00:00Z",
+      "dateUpdated": "2024-01-01T00:00:00Z",
+      "createdBy": "ASDM Platform",
+      "updatedBy": "ASDM Platform"
     }
   ]
 }
