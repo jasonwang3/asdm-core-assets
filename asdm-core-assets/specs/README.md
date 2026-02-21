@@ -16,10 +16,18 @@ Specs in this directory provide:
 specs/
 ├── specs-registry.json    # Registry file for Admin UI
 ├── reactjs/               # React.js development specs
-│   ├── README.md          # This file
+│   ├── README.md
 │   ├── reactjs-coding-standard.md
 │   ├── reactjs-performance-guidelines.md
 │   └── reactjs-testing-guidelines.md
+├── nextjs-react-tailwind/ # Next.js React Tailwind specs
+│   ├── README.md
+│   ├── general-typescript-nextjs-rules.md
+│   ├── nextjs-conventions-best-practices.md
+│   ├── ui-styling-shadcn-tailwind.md
+│   ├── component-naming-structure.md
+│   ├── private-shared-components.md
+│   └── performance-optimization.md
 └── {technology}/         # Additional tech stacks
     └── README.md
 ```
@@ -30,6 +38,14 @@ specs/
 - [Coding Standards](reactjs/reactjs-coding-standard.md)
 - [Performance Guidelines](reactjs/reactjs-performance-guidelines.md)
 - [Testing Guidelines](reactjs/reactjs-testing-guidelines.md)
+
+### Next.js React Tailwind
+- [General TypeScript & Next.js Rules](nextjs-react-tailwind/general-typescript-nextjs-rules.md)
+- [Next.js Conventions & Best Practices](nextjs-react-tailwind/nextjs-conventions-best-practices.md)
+- [UI & Styling with Shadcn UI and Tailwind](nextjs-react-tailwind/ui-styling-shadcn-tailwind.md)
+- [Component Naming & Directory Structure](nextjs-react-tailwind/component-naming-structure.md)
+- [Private vs Shared Components](nextjs-react-tailwind/private-shared-components.md)
+- [Performance Optimization](nextjs-react-tailwind/performance-optimization.md)
 
 ## Adding New Specs
 

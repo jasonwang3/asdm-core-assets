@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "dateCreated": "2024-01-01T00:00:00Z",
-  "dateUpdated": "2024-01-01T00:00:00Z",
+  "dateCreated": "2026-02-19T00:00:00Z",
+  "dateUpdated": "2026-02-19T00:00:00Z",
   "createdBy": "ASDM Platform",
   "updatedBy": "ASDM Platform",
   "specs": [
@@ -12,8 +12,20 @@
       "version": "1.0.0",
       "path": "reactjs",
       "entry-point": "reactjs/README.md",
-      "dateCreated": "2024-01-01T00:00:00Z",
-      "dateUpdated": "2024-01-01T00:00:00Z",
+      "dateCreated": "2026-02-19T00:00:00Z",
+      "dateUpdated": "2026-02-19T00:00:00Z",
+      "createdBy": "ASDM Platform",
+      "updatedBy": "ASDM Platform"
+    },
+    {
+      "id": "nextjs-react-tailwind",
+      "name": "Next.js React Tailwind Development Specs",
+      "description": "Coding standards and best practices for Next.js with React, TypeScript, Tailwind CSS, and Shadcn UI",
+      "version": "1.0.0",
+      "path": "nextjs-react-tailwind",
+      "entry-point": "nextjs-react-tailwind/README.md",
+      "dateCreated": "2026-02-19T00:00:00Z",
+      "dateUpdated": "2026-02-19T00:00:00Z",
       "createdBy": "ASDM Platform",
       "updatedBy": "ASDM Platform"
     }
