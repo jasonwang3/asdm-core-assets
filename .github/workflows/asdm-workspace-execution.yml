@@ -65,13 +65,8 @@ jobs:
           echo "=== CodeBuddy Execution Log (human-chat format) ==="
           echo ""
           
-          # Run codebuddy with stream-json, save to file and parse in real-time
-          eval "codebuddy $ARGS" 2>&1 | tee "$LOG_FILE" | while IFS= read -r line; do
-            # Only process lines that start with timestamp (JSON log format)
-            if [[ "$line" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]; then
-              echo "$line" | node "$PARSER" -f human-chat --no-color 2>/dev/null || true
-            fi
-          done
+          # Run codebuddy with stream-json, save to file and parse in real-time via pipe
+          eval "codebuddy $ARGS" 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
 
       - name: Parse final log
         if: always()
@@ -82,10 +77,10 @@ jobs:
           if [ -f "$LOG_FILE" ]; then
             echo ""
             echo "=== Final Parsed Log ==="
-            node "$PARSER" -f human-chat --no-color "$LOG_FILE" 2>/dev/null || echo "Log file exists but parser failed"
+            cat "$LOG_FILE" | node "$PARSER" --stdin -f human-chat --no-color 2>/dev/null || echo "Log file exists but parser failed"
             
             # Also generate JSON output for artifacts
-            node "$PARSER" -f json "$LOG_FILE" > "${{ github.workspace }}/execution-parsed.json" 2>/dev/null || true
+            cat "$LOG_FILE" | node "$PARSER" --stdin -f json > "${{ github.workspace }}/execution-parsed.json" 2>/dev/null || true
           fi
 
       - name: Upload log artifacts
