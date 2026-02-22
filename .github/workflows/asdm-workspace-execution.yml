@@ -3,32 +3,27 @@ name: ASDM Workspace Execution
 on:
   workflow_dispatch:
 
+env:
+  ACTIONS_STEP_DEBUG: true
+  ACTIONS_RUNNER_DEBUG: true
+
 jobs:
   execute-task:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install CodeBuddy CLI
-        run: |
-          npm install -g @tencent-ai/codebuddy-code
-          codebuddy --version
 
       - name: Execute task with CodeBuddy
         env:
           CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
           CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
         run: |
-          codebuddy -p "输出你的环境变量" \
-            --permission-mode acceptEdits \
-            --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab" \
-            --debug
+          npm install -g @tencent-ai/codebuddy-code
+          codebuddy --version
+          codebuddy -p "打印环境变量" -y --verbose
 
       - name: Collect results
         if: always()
