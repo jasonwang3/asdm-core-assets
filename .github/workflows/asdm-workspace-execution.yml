@@ -2,14 +2,6 @@ name: ASDM Workspace Execution
 
 on:
   workflow_dispatch:
-    inputs:
-      task_name:
-        description: 'Name of the task to execute'
-        required: true
-      workspace_path:
-        description: 'Path to the workspace'
-        required: false
-        default: '.'
 
 jobs:
   execute-task:
@@ -18,19 +10,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup execution environment
-        run: |
-          echo "Setting up execution environment..."
-          # Add environment setup logic here
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Execute task
+      - name: Install CodeBuddy CLI
         run: |
-          echo "Executing task: ${{ inputs.task_name }}"
-          echo "Workspace path: ${{ inputs.workspace_path }}"
-          # Add task execution logic here
+          npm install -g @tencent-ai/codebuddy-code
+          codebuddy --version
+
+      - name: Execute task with CodeBuddy
+        env:
+          CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
+        run: |
+          codebuddy -p "输出你的环境变量" \
+            --permission-mode acceptEdits \
+            --allowedTools "Bash(*) Read(*) Edit(*) Write(*) mcp__gitlab" \
+            --debug
 
       - name: Collect results
         if: always()
         run: |
           echo "Collecting execution results..."
-          # Add result collection logic here
