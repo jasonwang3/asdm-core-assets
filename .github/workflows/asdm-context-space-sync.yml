@@ -2,28 +2,158 @@ name: ASDM Context Space Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      repo-url:
+        description: 'Public GitHub repository URL'
+        required: true
+        default: ''
+      branch:
+        description: 'Branch name (fallback to master if main not found)'
+        required: false
+        default: 'main'
+        type: string
+
+env:
+  ACTIONS_STEP_DEBUG: true
+  ACTIONS_RUNNER_DEBUG: true
 
 jobs:
-  sync-contexts:
+  analyze-repository:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout current repository
         uses: actions/checkout@v4
 
-      - name: Sync context registries
-        run: |
-          echo "Synchronizing context registries..."
-          # Add sync logic here
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Update registry file
+      - name: Install CodeBuddy
         run: |
-          echo "Updating contexts-registry.json..."
-          # Add registry update logic here
+          npm install -g @tencent-ai/codebuddy-code
+          codebuddy --version
 
-      - name: Commit changes
+      - name: Clone target repository
+        id: clone-repo
+        env:
+          REPO_URL: ${{ inputs.repo-url }}
+          BRANCH: ${{ inputs.branch }}
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: sync context spaces [skip ci]"
-          git push
+          # Extract repo name from URL
+          REPO_NAME=$(echo "$REPO_URL" | sed 's/.*\///' | sed 's/\.git$//')
+          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_OUTPUT
+          
+          echo "Cloning repository: $REPO_URL"
+          echo "Requested branch: $BRANCH"
+          
+          # Try to clone with specified branch
+          if git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+            echo "✓ Successfully cloned on branch: $BRANCH"
+            echo "ACTUAL_BRANCH=$BRANCH" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to clone on branch '$BRANCH', trying fallback branches..."
+            
+            # If requested branch is main, try master
+            if [ "$BRANCH" = "main" ]; then
+              if git clone --branch master --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+                echo "✓ Successfully cloned on branch: master"
+                echo "ACTUAL_BRANCH=master" >> $GITHUB_OUTPUT
+              else
+                echo "✗ Error: Failed to clone repository on both main and master branches"
+                exit 1
+              fi
+            else
+              # If requested branch is not main, try main first, then master
+              if git clone --branch main --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+                echo "✓ Successfully cloned on branch: main"
+                echo "ACTUAL_BRANCH=main" >> $GITHUB_OUTPUT
+              elif git clone --branch master --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+                echo "✓ Successfully cloned on branch: master"
+                echo "ACTUAL_BRANCH=master" >> $GITHUB_OUTPUT
+              else
+                echo "✗ Error: Failed to clone repository on any branch"
+                exit 1
+              fi
+            fi
+          fi
+          
+          echo ""
+          echo "Repository cloned to: $REPO_NAME"
+          cd "$REPO_NAME"
+          echo "Current commit: $(git log -1 --oneline)"
+
+      - name: Create context-space-result directory
+        run: |
+          mkdir -p context-space-result
+          echo "Created context-space-result directory"
+
+      - name: Analyze repository with CodeBuddy
+        env:
+          CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
+          CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
+          REPO_NAME: ${{ steps.clone-repo.outputs.REPO_NAME }}
+        run: |
+          cd "$REPO_NAME"
+          
+          ANALYSIS_PROMPT="Please analyze this repository and generate context space information. Generate the following information:
+          1. Project structure overview
+          2. Key modules and their purposes
+          3. Main dependencies and frameworks used
+          4. Important configuration files
+          5. Entry points and main workflows
+          6. Architecture patterns and design decisions
+          
+          Please provide a comprehensive analysis that would help understand this codebase quickly."
+          
+          echo "=== Starting CodeBuddy Analysis ==="
+          echo "Repository: $REPO_NAME"
+          echo ""
+          
+          # Run codebuddy analysis and save results
+          codebuddy -p "$ANALYSIS_PROMPT" -y --output-format text > "${{ github.workspace }}/context-space-result/analysis.txt" 2>&1
+          
+          echo "Analysis completed. Results saved to context-space-result/analysis.txt"
+
+      - name: Generate context space metadata
+        run: |
+          REPO_NAME="${{ steps.clone-repo.outputs.REPO_NAME }}"
+          ACTUAL_BRANCH="${{ steps.clone-repo.outputs.ACTUAL_BRANCH }}"
+          
+          # Create metadata file
+          cat > context-space-result/metadata.json << EOF
+          {
+            "repository": {
+              "url": "${{ inputs.repo-url }}",
+              "name": "$REPO_NAME",
+              "branch": "$ACTUAL_BRANCH",
+              "requested_branch": "${{ inputs.branch }}"
+            },
+            "analysis": {
+              "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+              "workflow_run_id": "${{ github.run_id }}"
+            }
+          }
+          EOF
+          
+          echo "Metadata generated:"
+          cat context-space-result/metadata.json
+
+      - name: Upload context space artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-space-result
+          path: context-space-result/
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "======================================"
+          echo "Context Space Sync Completed"
+          echo "======================================"
+          echo "Repository: ${{ inputs.repo-url }}"
+          echo "Branch: ${{ steps.clone-repo.outputs.ACTUAL_BRANCH }}"
+          echo "Artifacts: context-space-result"
+          echo "======================================"
