@@ -24,9 +24,10 @@ jobs:
       - name: Create zip files for each toolset
         run: |
           TOOLSETS_DIR="asdm-core-assets/toolsets"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/packaged-toolsets"
           
           # Create a directory to store zip files
-          mkdir -p packaged-toolsets
+          mkdir -p "$OUTPUT_DIR"
           
           # Loop through each subdirectory in toolsets
           for dir in "$TOOLSETS_DIR"/*/; do
@@ -36,13 +37,13 @@ jobs:
               echo "Packaging toolset: $dirname"
               
               # Create zip file
-              (cd "$TOOLSETS_DIR" && zip -r "../packaged-toolsets/${dirname}.zip" "$dirname")
+              (cd "$TOOLSETS_DIR" && zip -r "$OUTPUT_DIR/${dirname}.zip" "$dirname")
             fi
           done
           
           # List created zip files
           echo "Created zip files:"
-          ls -la packaged-toolsets/
+          ls -la "$OUTPUT_DIR/"
 
       - name: Upload toolset artifacts
         uses: actions/upload-artifact@v4
