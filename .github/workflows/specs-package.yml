@@ -1,0 +1,53 @@
+name: Package Specs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'asdm-core-assets/specs/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'asdm-core-assets/specs/**'
+  workflow_dispatch:
+
+jobs:
+  package-specs:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create zip files for each spec
+        run: |
+          SPECS_DIR="asdm-core-assets/specs"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/packaged-specs"
+          
+          # Create a directory to store zip files
+          mkdir -p "$OUTPUT_DIR"
+          
+          # Loop through each subdirectory in specs
+          for dir in "$SPECS_DIR"/*/; do
+            if [ -d "$dir" ]; then
+              # Get the directory name
+              dirname=$(basename "$dir")
+              echo "Packaging spec: $dirname"
+              
+              # Create zip file
+              (cd "$SPECS_DIR" && zip -r "$OUTPUT_DIR/${dirname}.zip" "$dirname")
+            fi
+          done
+          
+          # List created zip files
+          echo "Created zip files:"
+          ls -la "$OUTPUT_DIR/"
+
+      - name: Upload spec artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: specs-packages
+          path: packaged-specs/*.zip
+          retention-days: 30
