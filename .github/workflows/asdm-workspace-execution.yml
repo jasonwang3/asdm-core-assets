@@ -174,11 +174,14 @@ jobs:
             echo "https://x-access-token:${WORKSPACE_GIT_TOKEN}@${GIT_HOST}" > ~/.git-credentials
           fi
 
-          # Check if there are any changes
-          if git diff --quiet && git diff --staged --quiet; then
+          # Check if there are any changes (including untracked files)
+          if [ -z "$(git status --porcelain)" ]; then
             echo "No changes detected. Skipping commit and PR creation."
             exit 0
           fi
+
+          echo "Changes detected:"
+          git status --short
 
           echo "Changes detected. Committing and pushing..."
 
