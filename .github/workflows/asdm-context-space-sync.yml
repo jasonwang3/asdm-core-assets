@@ -1,10 +1,13 @@
+# ASDM Context Space Sync — 公开仓库可匿名 clone；私有仓库在 workflow 仓库配置 Secret GIT_CLONE_TOKEN（PAT 等）。
+# 将本文件复制到实际承载 workflow 的仓库（如 asdm-core-assets）的 .github/workflows/ 下使用。
+
 name: ASDM Context Space Sync
 
 on:
   workflow_dispatch:
     inputs:
       repo-url:
-        description: 'Public GitHub repository URL'
+        description: 'Git repository HTTPS URL (public or private if secrets configured)'
         required: true
         default: ''
       branch:
@@ -12,14 +15,15 @@ on:
         required: false
         default: 'main'
         type: string
-      prompt-type:
-        description: 'Analysis prompt type'
+      prompt-content:
+        description: 'Analysis prompt content from promote file'
         required: true
-        default: 'general'
-        type: choice
-        options:
-          - general
-          - springboot-api
+        type: string
+      github-token:
+        description: 'GitHub token for cross-repository access'
+        required: false
+        default: ''
+        type: string
 
 env:
   ACTIONS_STEP_DEBUG: true
@@ -31,6 +35,11 @@ jobs:
     steps:
       - name: Checkout current repository
         uses: actions/checkout@v4
+
+      - name: Configure Git for cross-repository access
+        if: inputs.github-token != ''
+        run: |
+          git config --global url."https://x-access-token:${{ inputs.github-token }}@github.com/".insteadOf "https://github.com/"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,45 +62,95 @@ jobs:
         env:
           REPO_URL: ${{ inputs.repo-url }}
           BRANCH: ${{ inputs.branch }}
+          GIT_CLONE_TOKEN: ${{ secrets.GIT_CLONE_TOKEN }}
         run: |
-          # Extract repo name from URL
+          set -euo pipefail
+
+          export CLONE_URL
+          CLONE_URL=$(REPO_URL="$REPO_URL" GIT_CLONE_TOKEN="${GIT_CLONE_TOKEN:-}" \
+            python3 << 'PY'
+          import os
+          from urllib.parse import urlparse, urlunparse, quote
+
+          raw = os.environ.get("REPO_URL", "").strip()
+          token = (os.environ.get("GIT_CLONE_TOKEN") or "").strip()
+
+          if not raw:
+              raise SystemExit("REPO_URL is empty")
+
+          if "://" not in raw:
+              raw = "https://" + raw
+
+          p = urlparse(raw)
+          if p.scheme not in ("http", "https"):
+              raise SystemExit("Only http(s) repository URLs are supported")
+
+          host = (p.hostname or "").lower()
+          hostport = f"{p.hostname}:{p.port}" if p.port else (p.hostname or "")
+          path = p.path.rstrip("/") or "/"
+
+          if token:
+              if "github.com" in host:
+                  netloc = f"x-access-token:{quote(token, safe='')}@{hostport}"
+              elif "gitlab" in host:
+                  netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
+              else:
+                  netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
+          else:
+              netloc = p.netloc
+
+          if not path.endswith(".git"):
+              path = path + ".git"
+
+          out = urlunparse((p.scheme, netloc, path, "", "", ""))
+          print(out)
+          PY
+          )
+
           REPO_NAME=$(echo "$REPO_URL" | sed 's/.*\///' | sed 's/\.git$//')
-          echo "REPO_NAME=$REPO_NAME" >> $GITHUB_OUTPUT
-          
+          echo "REPO_NAME=$REPO_NAME" >> "$GITHUB_OUTPUT"
+
           echo "Cloning repository: $REPO_URL"
           echo "Requested branch: $BRANCH"
-          
-          # Try to clone with specified branch
-          if git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+          if [ -n "${GIT_CLONE_TOKEN:-}" ]; then
+            echo "Using authenticated clone (GIT_CLONE_TOKEN secret)."
+          else
+            echo "Using unauthenticated clone (public repos only)."
+          fi
+
+          try_clone() {
+            local b="$1"
+            rm -rf "$REPO_NAME"
+            git clone --branch "$b" --single-branch "$CLONE_URL" "$REPO_NAME"
+          }
+
+          if try_clone "$BRANCH" 2>/dev/null; then
             echo "✓ Successfully cloned on branch: $BRANCH"
-            echo "ACTUAL_BRANCH=$BRANCH" >> $GITHUB_OUTPUT
+            echo "ACTUAL_BRANCH=$BRANCH" >> "$GITHUB_OUTPUT"
           else
             echo "Failed to clone on branch '$BRANCH', trying fallback branches..."
-            
-            # If requested branch is main, try master
             if [ "$BRANCH" = "main" ]; then
-              if git clone --branch master --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+              if try_clone "master" 2>/dev/null; then
                 echo "✓ Successfully cloned on branch: master"
-                echo "ACTUAL_BRANCH=master" >> $GITHUB_OUTPUT
+                echo "ACTUAL_BRANCH=master" >> "$GITHUB_OUTPUT"
               else
                 echo "✗ Error: Failed to clone repository on both main and master branches"
                 exit 1
               fi
             else
-              # If requested branch is not main, try main first, then master
-              if git clone --branch main --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+              if try_clone "main" 2>/dev/null; then
                 echo "✓ Successfully cloned on branch: main"
-                echo "ACTUAL_BRANCH=main" >> $GITHUB_OUTPUT
-              elif git clone --branch master --single-branch "$REPO_URL" "$REPO_NAME" 2>/dev/null; then
+                echo "ACTUAL_BRANCH=main" >> "$GITHUB_OUTPUT"
+              elif try_clone "master" 2>/dev/null; then
                 echo "✓ Successfully cloned on branch: master"
-                echo "ACTUAL_BRANCH=master" >> $GITHUB_OUTPUT
+                echo "ACTUAL_BRANCH=master" >> "$GITHUB_OUTPUT"
               else
                 echo "✗ Error: Failed to clone repository on any branch"
                 exit 1
               fi
             fi
           fi
-          
+
           echo ""
           echo "Repository cloned to: $REPO_NAME"
           cd "$REPO_NAME"
@@ -105,7 +164,7 @@ jobs:
           cd "$REPO_NAME"
           RESULT_DIR="$(pwd)/asdm-context-space-result"
           mkdir -p "$RESULT_DIR"
-          echo "RESULT_DIR=$RESULT_DIR" >> $GITHUB_OUTPUT
+          echo "RESULT_DIR=$RESULT_DIR" >> "$GITHUB_OUTPUT"
           echo "Created asdm-context-space-result directory at: $RESULT_DIR"
 
       - name: Analyze repository with CodeBuddy
@@ -114,30 +173,18 @@ jobs:
           CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
           REPO_NAME: ${{ steps.clone-repo.outputs.REPO_NAME }}
           RESULT_DIR: ${{ steps.create-result-dir.outputs.RESULT_DIR }}
-          PROMPT_TYPE: ${{ inputs.prompt-type }}
+          PROMPT_CONTENT: ${{ inputs.prompt-content }}
         run: |
           cd "$REPO_NAME"
-          
+
           LOG_FILE="${{ github.workspace }}/analysis.log"
           PARSER="${{ github.workspace }}/tools/codebuddy-log-parser/dist/index.js"
-          
-          # Select prompt file based on prompt-type input
-          case "$PROMPT_TYPE" in
-            springboot-api)
-              PROMPT_FILE="${{ github.workspace }}/.github/workflows/ANALYSIS_PROMPT_SpringBoot_API.md"
-              ;;
-            general|*)
-              PROMPT_FILE="${{ github.workspace }}/.github/workflows/ANALYSIS_PROMPT.md"
-              ;;
-          esac
-          
-          echo "Selected prompt type: $PROMPT_TYPE"
-          echo "Using prompt file: $PROMPT_FILE"
-          
-          # Read prompt template and replace placeholder with actual result directory
-          ANALYSIS_PROMPT=$(sed "s|{RESULT_DIR}|$RESULT_DIR|g" "$PROMPT_FILE")
 
-          # Print the actual prompt content for debugging
+          echo "Using prompt content from input (promote file)"
+          
+          # Replace {RESULT_DIR} placeholder in prompt if present
+          ANALYSIS_PROMPT="${PROMPT_CONTENT//{RESULT_DIR}/$RESULT_DIR}"
+
           echo "=== Prompt Content ==="
           echo "$ANALYSIS_PROMPT"
           echo "=== End of Prompt ==="
@@ -147,8 +194,7 @@ jobs:
           echo "Repository: $REPO_NAME"
           echo "Result directory: $RESULT_DIR"
           echo ""
-          
-          # Run codebuddy with stream-json, save to file and parse in real-time via pipe
+
           eval "codebuddy -p \"$ANALYSIS_PROMPT\" -y --output-format stream-json" 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
 
       - name: Parse final log
@@ -158,13 +204,12 @@ jobs:
         run: |
           LOG_FILE="${{ github.workspace }}/analysis.log"
           PARSER="${{ github.workspace }}/tools/codebuddy-log-parser/dist/index.js"
-          
+
           if [ -f "$LOG_FILE" ]; then
             echo ""
             echo "=== Final Parsed Log ==="
             cat "$LOG_FILE" | node "$PARSER" --stdin -f human-chat --no-color 2>/dev/null || echo "Log file exists but parser failed"
-            
-            # Also generate JSON output for artifacts
+
             cat "$LOG_FILE" | node "$PARSER" --stdin -f json > "$RESULT_DIR/analysis-log.json" 2>/dev/null || true
           fi
 
@@ -173,8 +218,7 @@ jobs:
           REPO_NAME="${{ steps.clone-repo.outputs.REPO_NAME }}"
           ACTUAL_BRANCH="${{ steps.clone-repo.outputs.ACTUAL_BRANCH }}"
           RESULT_DIR="${{ steps.create-result-dir.outputs.RESULT_DIR }}"
-          
-          # Create metadata file
+
           cat > "$RESULT_DIR/metadata.json" << EOF
           {
             "repository": {
@@ -186,15 +230,14 @@ jobs:
             "analysis": {
               "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
               "workflow_run_id": "${{ github.run_id }}",
-              "result_directory": "$RESULT_DIR",
-              "prompt_type": "${{ inputs.prompt-type }}"
+              "result_directory": "$RESULT_DIR"
             }
           }
           EOF
-          
+
           echo "Metadata generated:"
           cat "$RESULT_DIR/metadata.json"
-          
+
           echo ""
           echo "Generated files in result directory:"
           ls -la "$RESULT_DIR/" || echo "No files generated yet"
