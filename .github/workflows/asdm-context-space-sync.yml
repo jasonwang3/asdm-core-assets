@@ -167,9 +167,12 @@ jobs:
           echo "RESULT_DIR=$RESULT_DIR" >> "$GITHUB_OUTPUT"
           echo "Created asdm-context-space-result directory at: $RESULT_DIR"
 
+      # CODEBUDDY_BASE_URL：自建网关时必填，例如 https://your-api.internal:8443（与 CODEBUDDY_API_KEY 同属一套）
+      # 未设置时默认请求 https://www.codebuddy.ai
       - name: Analyze repository with CodeBuddy
         env:
           CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
+          CODEBUDDY_BASE_URL: ${{ secrets.CODEBUDDY_BASE_URL }}
           CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
           REPO_NAME: ${{ steps.clone-repo.outputs.REPO_NAME }}
           RESULT_DIR: ${{ steps.create-result-dir.outputs.RESULT_DIR }}
