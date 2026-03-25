@@ -16,10 +16,9 @@ For each controller found, extract:
   - Parameters from `@RequestParam`, `@PathVariable`, `@RequestBody` — include Name, Type, Required (true/false)
 - Business domain this controller serves (e.g., User Management, Order Processing)
 
-## Step 3: Write Output File
-You MUST write the result to disk. Use the following shell command to create the file:
-
-```bash
-cat > {RESULT_DIR}/api.md << 'EOF'
-<your generated markdown content here>
-EOF
+## Step 3: Output
+Do NOT write any file. Instead, output the full Markdown document
+between the following two marker lines (markers must appear on their own line):
+<<<API_DOC_START>>>
+(your full markdown here)
+<<<API_DOC_END>>>
