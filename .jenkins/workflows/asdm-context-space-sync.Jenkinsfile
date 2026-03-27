@@ -13,7 +13,7 @@ import hudson.util.Secret
 pipeline {
   agent {
     docker {
-      image 'asdm-node-agent:latest'
+      image 'asdm/jenkins-agent:latest'
       args '-u root'
       reuseNode true
     }
@@ -41,13 +41,24 @@ pipeline {
   stages {
     stage('Verify agent toolchain') {
       steps {
-        sh '''
+        sh '''bash -s <<'ASDM_SCRIPT'
           set -euo pipefail
+          set -x
+          echo "=== Runtime Debug (inside docker agent container) ==="
+          echo "SHELL=${SHELL:-unknown}"
+          echo "PWD=$(pwd)"
+          echo "USER=$(id -un) UID=$(id -u) GID=$(id -g)"
+          id
+          command -v sh
+          command -v bash
+          command -v docker || true
+          docker --version || true
           node --version
           npm --version
           git --version
           python3 --version
           codebuddy --version
+ASDM_SCRIPT
         '''
       }
     }
