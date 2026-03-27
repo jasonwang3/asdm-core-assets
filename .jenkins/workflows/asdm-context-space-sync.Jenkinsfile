@@ -8,12 +8,10 @@
 // 3) Secret text credentials: codebuddy-api-key (required). Optional: codebuddy-base-url, codebuddy-internet-env.
 // 4) GIT_CLONE_TOKEN: pass via build parameter only; no Jenkins credential id required. Use empty for public repos.
 
-import hudson.util.Secret
-
 pipeline {
   agent {
     docker {
-      image 'asdm-node-agent:latest'
+      image 'asdm/jenkins-agent:latest'
       args '-u root'
       reuseNode true
     }
@@ -23,6 +21,7 @@ pipeline {
     LC_ALL = 'C.UTF-8'
     LANG = 'C.UTF-8'
     JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
+    CODEBUDDY_INTERNET_ENVIRONMENT = 'internal'
   }
 
   options {
@@ -246,25 +245,10 @@ ASDM_SCRIPT
 ASDM_SCRIPT
             '''
           }
-          def keyFromParam = ''
-          def rawKey = params.CODEBUDDY_API_KEY_PARAM
-          if (rawKey != null) {
-            if (rawKey instanceof Secret) {
-              keyFromParam = (rawKey.getPlainText() ?: '').trim()
-            } else {
-              keyFromParam = rawKey.toString().trim()
-            }
-          }
-          if (keyFromParam) {
-            withEnv([('CODEBUDDY_API_KEY=' + keyFromParam) as String]) {
-              runAnalyze()
-            }
-          } else {
-            withCredentials([
-              string(credentialsId: 'codebuddy-api-key', variable: 'CODEBUDDY_API_KEY')
-            ]) {
-              runAnalyze()
-            }
+          withCredentials([
+            string(credentialsId: 'codebuddy-api-key', variable: 'CODEBUDDY_API_KEY')
+          ]) {
+            runAnalyze()
           }
           def analysisLogPath = "${env.WORKSPACE}/analysis.log"
           if (fileExists(analysisLogPath)) {
