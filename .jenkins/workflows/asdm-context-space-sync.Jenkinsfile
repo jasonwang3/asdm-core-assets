@@ -11,7 +11,7 @@
 pipeline {
   agent {
     docker {
-      image 'asdm/jenkins-agent:latest'
+      image 'asdm-node-agent:latest'
       args '-u root'
       reuseNode true
     }
