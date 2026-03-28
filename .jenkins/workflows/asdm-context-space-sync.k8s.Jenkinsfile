@@ -10,20 +10,8 @@
 
 pipeline {
   agent {
-    kubernetes {
-      defaultContainer 'asdm'
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: asdm
-    image: asdm-node-agent:latest
-    imagePullPolicy: IfNotPresent
-    command:
-    - cat
-    tty: true
-"""
+    node {
+      label 'asdm-agent'
     }
   }
 
@@ -326,6 +314,12 @@ ASDM_SCRIPT
 
   post {
     always {
+      script {
+        if (!env.WORKSPACE?.trim()) {
+          echo '未获取到 WORKSPACE（通常是 agent 未成功启动），跳过产物归档。'
+          return
+        }
+      }
       archiveArtifacts artifacts: 'analysis.log', fingerprint: true, allowEmptyArchive: true
       sh '''bash -s <<'ASDM_SCRIPT'
         set -euo pipefail
