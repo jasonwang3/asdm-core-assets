@@ -30,7 +30,7 @@ pipeline {
   parameters {
     string(name: 'REPO_URL', defaultValue: '', description: 'Target Git HTTPS URL')
     string(name: 'BRANCH', defaultValue: 'master', description: 'Branch; falls back main/master per workflow')
-    text(name: 'PROMPT_CONTENT', defaultValue: '分析这个代码仓库的整体架构和技术栈，输出一份 markdown 分析报告到 {RESULT_DIR}/analysis-report.md，包含以下内容：1. 项目概述 2. 技术栈 3. 模块结构 4. 关键依赖。用中文输出。', description: 'Prompt for codebuddy -p; {RESULT_DIR} may be used')
+    text(name: 'PROMPT_CONTENT', defaultValue: '分析这个代码仓库的整体架构和技术栈，输出一份 markdown 分析报告到 {RESULT_DIR}/project-overview.md，包含以下内容：1. 项目概述 2. 技术栈 3. 模块结构 4. 关键依赖。用中文输出。', description: 'Prompt for codebuddy -p; {RESULT_DIR} may be used')
     string(name: 'GIT_CLONE_TOKEN', defaultValue: '', description: 'Optional PAT for private repo; empty for public')
     password(name: 'CODEBUDDY_API_KEY_PARAM', defaultValue: '', description: 'CodeBuddy API Key（留空则使用 Jenkins 凭据：Secret text，id=codebuddy-api-key）')
   }
