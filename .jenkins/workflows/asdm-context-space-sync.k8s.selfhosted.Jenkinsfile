@@ -1,33 +1,40 @@
-// Same behavior as deploy/.github/workflows/asdm-context-space-sync.yml (Host agent).
+// Same behavior as deploy/.github/workflows/asdm-context-space-sync.yml (Kubernetes agent).
 // Docker-agent variant: asdm-context-space-sync.Jenkinsfile
-// Kubernetes-agent variant: asdm-context-space-sync.k8s.Jenkinsfile
+// Host-agent variant: asdm-context-space-sync.no-docker.Jenkinsfile
 //
 // Setup:
-// 1) Host agent runs directly on Jenkins node (no Docker / K8s).
-// 2) 节点需预装 git, node, npm, python3, codebuddy CLI, codebuddy-log-parser（或镜像内预装）。
+// 1) SCM checkout of a repo that contains this Jenkinsfile and tools/codebuddy-log-parser (fallback only).
+// 2) Agent 镜像名写死在下方 Pod yaml 的 image；需换镜像时直接改 Jenkinsfile 并提交到 Git。
 // 3) Secret text credentials (all optional): codebuddy-api-key, codebuddy-base-url.
 // 4) GIT_CLONE_TOKEN: pass via build parameter only; no Jenkins credential id required. Use empty for public repos.
 
 pipeline {
-  agent any
+  agent {
+    node {
+      label 'asdm-agent'
+    }
+  }
 
   environment {
     LC_ALL = 'C.UTF-8'
     LANG = 'C.UTF-8'
-    JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
-    CODEBUDDY_INTERNET_ENVIRONMENT = 'internal'
+    JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8'
+    // Self-hosted mode (per customer env). Fill placeholders below as needed.
+    CODEBUDDY_INTERNET_ENVIRONMENT = 'selfhosted'
+    CODEBUDDY_ENTERPRISE_ENDPOINT = 'https://copilot.your-company.com'
+    CODEBUDDY_API_KEY_MANUAL = 'REPLACE_WITH_YOUR_API_KEY'
   }
 
   options {
     timestamps()
+    // Requires AnsiColor plugin: ansiColor('xterm')
   }
 
   parameters {
     string(name: 'REPO_URL', defaultValue: '', description: 'Target Git HTTPS URL')
-    string(name: 'BRANCH', defaultValue: 'main', description: 'Branch; falls back main/master per workflow')
-    text(name: 'PROMPT_CONTENT', defaultValue: '', description: 'Prompt for codebuddy -p; {RESULT_DIR} may be used')
+    string(name: 'BRANCH', defaultValue: 'master', description: 'Branch; falls back main/master per workflow')
+    text(name: 'PROMPT_CONTENT', defaultValue: '分析这个代码仓库的整体架构和技术栈，输出一份 markdown 分析报告到 {RESULT_DIR}/project-overview.md，包含以下内容：1. 项目概述 2. 技术栈 3. 模块结构 4. 关键依赖。用中文输出。', description: 'Prompt for codebuddy -p; {RESULT_DIR} may be used')
     string(name: 'GIT_CLONE_TOKEN', defaultValue: '', description: 'Optional PAT for private repo; empty for public')
-    password(name: 'CODEBUDDY_API_KEY_PARAM', defaultValue: '', description: 'CodeBuddy API Key（留空则使用 Jenkins 凭据：Secret text，id=codebuddy-api-key）')
   }
 
   stages {
@@ -36,13 +43,15 @@ pipeline {
         sh '''bash -s <<'ASDM_SCRIPT'
           set -euo pipefail
           set -x
-          echo "=== Runtime Debug (inside host agent) ==="
+          echo "=== Runtime Debug (inside k8s agent container) ==="
           echo "SHELL=${SHELL:-unknown}"
           echo "PWD=$(pwd)"
           echo "USER=$(id -un) UID=$(id -u) GID=$(id -g)"
           id
           command -v sh
           command -v bash
+          command -v docker || true
+          docker --version || true
           node --version
           npm --version
           git --version
@@ -64,11 +73,11 @@ ASDM_SCRIPT
 ASDM_SCRIPT
           ''', returnStatus: true) == 0
           if (skip) {
-            echo '使用预装的 codebuddy-log-parser，跳过本阶段'
+            echo '使用镜像内预装的 codebuddy-log-parser，跳过本阶段'
             return
           }
           if (!fileExists('tools/codebuddy-log-parser/package.json')) {
-            error('缺少 tools/codebuddy-log-parser，且未预装 /opt/codebuddy-log-parser')
+            error('缺少 tools/codebuddy-log-parser，且镜像内未预装 /opt/codebuddy-log-parser')
           }
           dir('tools/codebuddy-log-parser') {
             sh 'bash -euo pipefail -c "npm install && npm run build"'
@@ -225,37 +234,45 @@ ASDM_SCRIPT
             fi
             ANALYSIS_PROMPT=$(cat "${WORKSPACE}/.analysis_prompt_resolved.txt")
             export CODEBUDDY_API_KEY
-            export CODEBUDDY_BASE_URL="${CODEBUDDY_BASE_URL:-}"
             export CODEBUDDY_INTERNET_ENVIRONMENT="${CODEBUDDY_INTERNET_ENVIRONMENT:-}"
+            mkdir -p "${HOME}/.codebuddy"
+            cat > "${HOME}/.codebuddy/settings.json" << EOF2
+{
+  "enterpriseEndpoint": "${CODEBUDDY_ENTERPRISE_ENDPOINT:-}",
+  "env": {
+    "CODEBUDDY_INTERNET_ENVIRONMENT": "${CODEBUDDY_INTERNET_ENVIRONMENT:-selfhosted}",
+    "CODEBUDDY_API_KEY": "${CODEBUDDY_API_KEY:-}"
+  }
+}
+EOF2
             mkdir -p "$RESULT_DIR"
             set +e
-            codebuddy -p "$ANALYSIS_PROMPT" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+            codebuddy --model deepseek-v3.2-aicoding -p "分析这个代码仓库的整体架构和技术栈，输出一份 markdown 分析报告到 ${RESULT_DIR}/project-overview.md，包含以下内容：1. 项目概述 2. 技术栈 3. 模块结构 4. 关键依赖。用中文输出。" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
             CB=${PIPESTATUS[0]}
             set -e
             exit "$CB"
 ASDM_SCRIPT
             '''
           }
-          try {
-            withCredentials([string(credentialsId: 'codebuddy-api-key', variable: 'CODEBUDDY_API_KEY')]) {
-              env.CODEBUDDY_API_KEY_CRED = env.CODEBUDDY_API_KEY
-            }
-          } catch (err) {
-            echo "Jenkins credential 'codebuddy-api-key' not found, skipping."
-            env.CODEBUDDY_API_KEY_CRED = ''
+          def manualApiKey = (env.CODEBUDDY_API_KEY_MANUAL ?: '').trim()
+          def manualEndpoint = (env.CODEBUDDY_ENTERPRISE_ENDPOINT ?: '').trim()
+          def effectiveApiKey = (!manualApiKey.isEmpty() && manualApiKey != 'REPLACE_WITH_YOUR_API_KEY')
+                  ? manualApiKey
+                  : ''
+
+          if (effectiveApiKey) {
+            echo "Using manual CodeBuddy API key from Jenkinsfile environment."
+          } else {
+            error("CODEBUDDY_API_KEY_MANUAL is not set. Please update Jenkinsfile environment.")
           }
-          try {
-            withCredentials([string(credentialsId: 'codebuddy-base-url', variable: 'CODEBUDDY_BASE_URL_CRED')]) {
-              env.CODEBUDDY_BASE_URL_CRED = env.CODEBUDDY_BASE_URL_CRED
-            }
-          } catch (err) {
-            echo "Jenkins credential 'codebuddy-base-url' not found, skipping."
-            env.CODEBUDDY_BASE_URL_CRED = ''
+          if (!manualEndpoint.isEmpty() && manualEndpoint != 'https://copilot.your-company.com') {
+            echo "Using manual CodeBuddy endpoint: ${manualEndpoint}"
+          } else {
+            error("CODEBUDDY_ENTERPRISE_ENDPOINT is not set. Please update Jenkinsfile environment.")
           }
           withEnv([
-            "CODEBUDDY_API_KEY=${env.CODEBUDDY_API_KEY_CRED ?: ''}",
-            "CODEBUDDY_BASE_URL=${env.CODEBUDDY_BASE_URL_CRED ?: ''}",
-            "CODEBUDDY_INTERNET_ENVIRONMENT=internal"
+            "CODEBUDDY_API_KEY=${effectiveApiKey}",
+            "CODEBUDDY_INTERNET_ENVIRONMENT=${env.CODEBUDDY_INTERNET_ENVIRONMENT ?: 'selfhosted'}"
           ]) {
             runAnalyze()
           }
@@ -263,7 +280,7 @@ ASDM_SCRIPT
           if (fileExists(analysisLogPath)) {
             def logText = readFile(encoding: 'UTF-8', file: analysisLogPath)
             if (logText.contains('401 Unauthorized')) {
-              error('CodeBuddy 返回 401 Unauthorized：请核对 API Key（构建参数或凭据 id=codebuddy-api-key）是否有效、未过期、无多余空格。')
+              error('CodeBuddy 返回 401 Unauthorized：请核对 Jenkinsfile 中手动配置的 API Key 是否有效、未过期、无多余空格。')
             }
           }
         }
@@ -325,6 +342,12 @@ ASDM_SCRIPT
 
   post {
     always {
+      script {
+        if (!env.WORKSPACE?.trim()) {
+          echo '未获取到 WORKSPACE（通常是 agent 未成功启动），跳过产物归档。'
+          return
+        }
+      }
       archiveArtifacts artifacts: 'analysis.log', fingerprint: true, allowEmptyArchive: true
       sh '''bash -s <<'ASDM_SCRIPT'
         set -euo pipefail
@@ -341,3 +364,4 @@ ASDM_SCRIPT
     }
   }
 }
+

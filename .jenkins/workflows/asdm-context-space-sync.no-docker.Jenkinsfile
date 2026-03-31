@@ -14,7 +14,8 @@ pipeline {
   environment {
     LC_ALL = 'C.UTF-8'
     LANG = 'C.UTF-8'
-    JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8'
+    JAVA_TOOL_OPTIONS = '-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8'
+
     CODEBUDDY_INTERNET_ENVIRONMENT = 'internal'
   }
 
