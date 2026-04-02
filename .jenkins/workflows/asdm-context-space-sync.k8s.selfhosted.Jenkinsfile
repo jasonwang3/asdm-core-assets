@@ -235,6 +235,7 @@ ASDM_SCRIPT
             ANALYSIS_PROMPT=$(cat "${WORKSPACE}/.analysis_prompt_resolved.txt")
             export CODEBUDDY_API_KEY
             export CODEBUDDY_INTERNET_ENVIRONMENT="${CODEBUDDY_INTERNET_ENVIRONMENT:-}"
+            export CODEBUDDY_MODEL="deepseek-v3.2-aicoding"
             mkdir -p "${HOME}/.codebuddy"
             cat > "${HOME}/.codebuddy/settings.json" << EOF2
 {
@@ -246,14 +247,16 @@ ASDM_SCRIPT
 }
 EOF2
             mkdir -p "$RESULT_DIR"
+            echo "=== codebuddy version ===" && codebuddy --version || true
             set +e
-            codebuddy --model deepseek-v3.2-aicoding -p "分析这个代码仓库的整体架构和技术栈，输出一份 markdown 分析报告到 ${RESULT_DIR}/project-overview.md，包含以下内容：1. 项目概述 2. 技术栈 3. 模块结构 4. 关键依赖。用中文输出。" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+            echo "=== settings.json ===" && cat "${HOME}/.codebuddy/settings.json" && echo "=== end ==="
+            codebuddy --model "$CODEBUDDY_MODEL" -p "$ANALYSIS_PROMPT" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
             CB=${PIPESTATUS[0]}
             set -e
             exit "$CB"
 ASDM_SCRIPT
             '''
-          }
+          
           def manualApiKey = (env.CODEBUDDY_API_KEY_MANUAL ?: '').trim()
           def manualEndpoint = (env.CODEBUDDY_ENTERPRISE_ENDPOINT ?: '').trim()
           def effectiveApiKey = (!manualApiKey.isEmpty() && manualApiKey != 'REPLACE_WITH_YOUR_API_KEY')
