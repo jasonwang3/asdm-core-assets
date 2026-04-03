@@ -4,34 +4,34 @@ on:
   workflow_dispatch:
     inputs:
       prompt-text:
-        description: 'Prompt text for CodeBuddy'
+        description: "Prompt text for CodeBuddy"
         required: true
-        default: ''
+        default: ""
       workspace-git-url:
-        description: 'Git URL of the workspace repository to work on'
+        description: "Git URL of the workspace repository to work on"
         required: true
-        default: ''
+        default: ""
       workspace-git-token:
-        description: 'Personal access token for the workspace repository (required for private repos and push operations)'
+        description: "Personal access token for the workspace repository (required for private repos and push operations)"
         required: false
-        default: ''
+        default: ""
       workspace-git-branch:
-        description: 'Branch of the workspace repository to checkout (base branch)'
+        description: "Branch of the workspace repository to checkout (base branch)"
         required: false
-        default: 'main'
+        default: "main"
       workspace-git-branch-target:
-        description: 'Target branch name to create from workspace-git-branch for PR'
+        description: "Target branch name to create from workspace-git-branch for PR"
         required: false
-        default: ''
+        default: ""
       verbose:
-        description: 'Enable verbose logging'
+        description: "Enable verbose logging"
         required: false
         default: true
         type: boolean
       output-format:
-        description: 'Output format'
+        description: "Output format"
         required: false
-        default: 'stream-json'
+        default: "stream-json"
         type: choice
         options:
           - stream-json
@@ -49,32 +49,52 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout workspace repository
+      - name: Detect repository provider
         env:
           WORKSPACE_GIT_URL: ${{ github.event.inputs.workspace-git-url }}
+        run: |
+          set -euo pipefail
+
+          SANITIZED_URL="$(echo "$WORKSPACE_GIT_URL" | sed -E 's#^(https?://)[^/@]+@#\1#')"
+          HOST="$(echo "$SANITIZED_URL" | sed -E 's#^https?://([^/]+)/.*#\1#')"
+
+          PROVIDER="generic"
+          if [[ "$HOST" == "github.com" ]]; then
+            PROVIDER="github"
+          elif [[ "$HOST" == *"dev.azure.com" ]] || [[ "$HOST" == *"visualstudio.com" ]] || [[ "$SANITIZED_URL" == *"/_git/"* ]]; then
+            PROVIDER="azure"
+          fi
+
+          echo "WORKSPACE_GIT_URL_SANITIZED=$SANITIZED_URL" >> "$GITHUB_ENV"
+          echo "WORKSPACE_GIT_HOST=$HOST" >> "$GITHUB_ENV"
+          echo "WORKSPACE_GIT_PROVIDER=$PROVIDER" >> "$GITHUB_ENV"
+
+          echo "Detected provider: $PROVIDER"
+          echo "Detected host: $HOST"
+
+      - name: Checkout workspace repository
+        env:
+          WORKSPACE_GIT_URL: ${{ env.WORKSPACE_GIT_URL_SANITIZED }}
           WORKSPACE_GIT_BRANCH: ${{ github.event.inputs.workspace-git-branch }}
           WORKSPACE_GIT_TOKEN: ${{ github.event.inputs.workspace-git-token }}
+          WORKSPACE_GIT_PROVIDER: ${{ env.WORKSPACE_GIT_PROVIDER }}
         run: |
-          # Configure git to use token for authentication
-          if [ -n "$WORKSPACE_GIT_TOKEN" ]; then
-            # Extract host from URL for credential helper
-            GIT_HOST=$(echo "$WORKSPACE_GIT_URL" | sed -E 's|.*@([^:/]+).*|\1|' | head -1)
-            
-            # Configure credential helper
-            git config --global credential.helper store
-            echo "https://x-access-token:${WORKSPACE_GIT_TOKEN}@${GIT_HOST}" > ~/.git-credentials
-            
-            # Clone with token embedded in URL if it's an HTTPS URL
-            if [[ "$WORKSPACE_GIT_URL" == https://* ]]; then
-              AUTH_URL=$(echo "$WORKSPACE_GIT_URL" | sed "s|https://|https://x-access-token:${WORKSPACE_GIT_TOKEN}@|")
-              git clone --branch "$WORKSPACE_GIT_BRANCH" --single-branch "$AUTH_URL" workspace
-            else
-              git clone --branch "$WORKSPACE_GIT_BRANCH" --single-branch "$WORKSPACE_GIT_URL" workspace
-            fi
+          set -euo pipefail
+
+          AUTH_USER="oauth2"
+          if [[ "$WORKSPACE_GIT_PROVIDER" == "github" ]]; then
+            AUTH_USER="x-access-token"
+          elif [[ "$WORKSPACE_GIT_PROVIDER" == "azure" ]]; then
+            AUTH_USER="pat"
+          fi
+
+          if [ -n "$WORKSPACE_GIT_TOKEN" ] && [[ "$WORKSPACE_GIT_URL" == https://* ]]; then
+            AUTH_URL="$(echo "$WORKSPACE_GIT_URL" | sed "s#^https://#https://${AUTH_USER}:${WORKSPACE_GIT_TOKEN}@#")"
+            git clone --branch "$WORKSPACE_GIT_BRANCH" --single-branch "$AUTH_URL" workspace
           else
             git clone --branch "$WORKSPACE_GIT_BRANCH" --single-branch "$WORKSPACE_GIT_URL" workspace
           fi
-          
+
           echo "Workspace repository cloned to: $(pwd)/workspace"
           ls -la workspace
 
@@ -84,31 +104,38 @@ jobs:
           WORKSPACE_GIT_BRANCH: ${{ github.event.inputs.workspace-git-branch }}
           WORKSPACE_GIT_BRANCH_TARGET: ${{ github.event.inputs.workspace-git-branch-target }}
           WORKSPACE_GIT_TOKEN: ${{ github.event.inputs.workspace-git-token }}
+          WORKSPACE_GIT_PROVIDER: ${{ env.WORKSPACE_GIT_PROVIDER }}
         working-directory: ${{ github.workspace }}/workspace
         run: |
-          # Configure git for commits
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Ensure credential helper is configured for push
           if [ -n "$WORKSPACE_GIT_TOKEN" ]; then
-            GIT_HOST=$(git remote get-url origin | sed -E 's|.*@([^:/]+).*|\1|' | head -1)
-            git config --global credential.helper store
-            echo "https://x-access-token:${WORKSPACE_GIT_TOKEN}@${GIT_HOST}" > ~/.git-credentials
+            ORIGIN_URL="$(git remote get-url origin)"
+            SANITIZED_ORIGIN="$(echo "$ORIGIN_URL" | sed -E 's#^(https?://)[^/@]+@#\1#')"
+
+            AUTH_USER="oauth2"
+            if [[ "$WORKSPACE_GIT_PROVIDER" == "github" ]]; then
+              AUTH_USER="x-access-token"
+            elif [[ "$WORKSPACE_GIT_PROVIDER" == "azure" ]]; then
+              AUTH_USER="pat"
+            fi
+
+            PUSH_URL="$(echo "$SANITIZED_ORIGIN" | sed "s#^https://#https://${AUTH_USER}:${WORKSPACE_GIT_TOKEN}@#")"
+            git remote set-url origin "$PUSH_URL"
           fi
 
-          # Create and checkout new branch from current branch
           echo "Creating new branch '$WORKSPACE_GIT_BRANCH_TARGET' from '$WORKSPACE_GIT_BRANCH'"
           git checkout -b "$WORKSPACE_GIT_BRANCH_TARGET"
-
-          # Push the new branch to remote
           git push -u origin "$WORKSPACE_GIT_BRANCH_TARGET"
           echo "Branch '$WORKSPACE_GIT_BRANCH_TARGET' created and pushed to remote"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install CodeBuddy
         run: |
@@ -125,79 +152,74 @@ jobs:
         env:
           CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
           CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
+          CODEBUDDY_PROMPT: ${{ inputs.prompt-text }}
         working-directory: ${{ github.workspace }}/workspace
         run: |
+          set -o pipefail
           LOG_FILE="${{ github.workspace }}/execution.log"
           PARSER="${{ github.workspace }}/tools/codebuddy-log-parser/dist/index.js"
-          
-          ARGS="-p \"${{ inputs.prompt-text }}\" -y --output-format stream-json"
-          if [ "${{ inputs.verbose }}" = "true" ]; then
-            ARGS="$ARGS --verbose"
-          fi
-          
+
           echo "=== CodeBuddy Execution Log (human-chat format) ==="
-          echo ""
           echo "Working directory: $(pwd)"
           echo ""
-          
-          # Run codebuddy with stream-json, save to file and parse in real-time via pipe
-          eval "codebuddy $ARGS" 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+
+          VERBOSE_FLAG=""
+          if [ "${{ inputs.verbose }}" = "true" ]; then
+            VERBOSE_FLAG="--verbose"
+          fi
+
+          codebuddy -p "$CODEBUDDY_PROMPT" -y --output-format stream-json $VERBOSE_FLAG \
+            2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
 
       - name: Parse final log
         if: always()
         run: |
           LOG_FILE="${{ github.workspace }}/execution.log"
           PARSER="${{ github.workspace }}/tools/codebuddy-log-parser/dist/index.js"
-          
+
           if [ -f "$LOG_FILE" ]; then
             echo ""
             echo "=== Final Parsed Log ==="
             cat "$LOG_FILE" | node "$PARSER" --stdin -f human-chat --no-color 2>/dev/null || echo "Log file exists but parser failed"
-            
-            # Also generate JSON output for artifacts
             cat "$LOG_FILE" | node "$PARSER" --stdin -f json > "${{ github.workspace }}/execution-parsed.json" 2>/dev/null || true
           fi
 
-      - name: Check for changes and create PR
-        if: ${{ github.event.inputs.workspace-git-branch-target != '' }}
+      - name: Check for changes and push
+        if: ${{ always() && github.event.inputs.workspace-git-branch-target != '' }}
         env:
-          WORKSPACE_GIT_BRANCH: ${{ github.event.inputs.workspace-git-branch }}
           WORKSPACE_GIT_BRANCH_TARGET: ${{ github.event.inputs.workspace-git-branch-target }}
           WORKSPACE_GIT_TOKEN: ${{ github.event.inputs.workspace-git-token }}
-          GH_TOKEN: ${{ github.event.inputs.workspace-git-token }}
+          WORKSPACE_GIT_PROVIDER: ${{ env.WORKSPACE_GIT_PROVIDER }}
         working-directory: ${{ github.workspace }}/workspace
         run: |
+          set -euo pipefail
+
           PR_JSON_FILE="${{ github.workspace }}/pr.json"
 
-          # Ensure credential helper is configured for push
-          if [ -n "$WORKSPACE_GIT_TOKEN" ]; then
-            GIT_HOST=$(git remote get-url origin | sed -E 's|.*@([^:/]+).*|\1|' | head -1)
-            git config --global credential.helper store
-            echo "https://x-access-token:${WORKSPACE_GIT_TOKEN}@${GIT_HOST}" > ~/.git-credentials
-          fi
-
-          # Check if there are any changes (including untracked files)
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes detected. Skipping commit and PR creation."
-            echo '{"status": "no_changes", "message": "No changes detected. PR not created."}' > "$PR_JSON_FILE"
+            echo '{"status":"no_changes","message":"No changes detected. PR not created."}' > "$PR_JSON_FILE"
             exit 0
           fi
 
           echo "Changes detected:"
           git status --short
 
-          echo "Changes detected. Committing and pushing..."
-
-          # Add all changes
           git add -A
-
-          # Commit changes
           git commit -m "chore: automated changes from CodeBuddy"
-
-          # Push changes to target branch
           git push origin "$WORKSPACE_GIT_BRANCH_TARGET"
 
-          # Create Pull Request using GitHub CLI
+      - name: Create Pull Request (GitHub)
+        if: ${{ always() && github.event.inputs.workspace-git-branch-target != '' && env.WORKSPACE_GIT_PROVIDER == 'github' }}
+        env:
+          WORKSPACE_GIT_BRANCH: ${{ github.event.inputs.workspace-git-branch }}
+          WORKSPACE_GIT_BRANCH_TARGET: ${{ github.event.inputs.workspace-git-branch-target }}
+          GH_TOKEN: ${{ github.event.inputs.workspace-git-token }}
+        working-directory: ${{ github.workspace }}/workspace
+        run: |
+          set -euo pipefail
+
+          PR_JSON_FILE="${{ github.workspace }}/pr.json"
           set +e
           PR_RESULT=$(gh pr create \
             --title "Auto-generated: CodeBuddy changes" \
@@ -209,44 +231,103 @@ jobs:
           set -e
 
           if [ $PR_EXIT_CODE -eq 0 ]; then
-            echo "PR created successfully: $PR_RESULT"
-            # Extract PR number from URL (e.g., https://github.com/owner/repo/pull/123)
             PR_URL=$(echo "$PR_RESULT" | grep -oE 'https://[^ ]+pull/[0-9]+' | head -1)
             PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
-            
-            # Get PR info in JSON format
             if [ -n "$PR_NUMBER" ]; then
               PR_JSON=$(gh pr view "$PR_NUMBER" --json number,url,title,state,createdAt,headRefName,baseRefName 2>/dev/null || echo "")
               if [ -n "$PR_JSON" ]; then
                 echo "$PR_JSON" > "$PR_JSON_FILE"
               else
-                # Fallback: construct minimal JSON from available info
-                echo "{\"number\": $PR_NUMBER, \"url\": \"$PR_URL\", \"title\": \"Auto-generated: CodeBuddy changes\", \"state\": \"OPEN\", \"headRefName\": \"$WORKSPACE_GIT_BRANCH_TARGET\", \"baseRefName\": \"$WORKSPACE_GIT_BRANCH\"}" > "$PR_JSON_FILE"
+                echo "{\"status\":\"created\",\"url\":\"$PR_URL\"}" > "$PR_JSON_FILE"
               fi
             else
-              echo "{\"status\": \"created\", \"url\": \"$PR_RESULT\"}" > "$PR_JSON_FILE"
+              echo "{\"status\":\"created\",\"url\":\"$PR_RESULT\"}" > "$PR_JSON_FILE"
             fi
           else
-            echo "PR create failed with exit code $PR_EXIT_CODE"
-            echo "Error output: $PR_RESULT"
-            
-            # Check if PR already exists for this branch
             EXISTING_PR=$(gh pr list --head "$WORKSPACE_GIT_BRANCH_TARGET" --json number,url,title,state 2>/dev/null | jq '.[0]' 2>/dev/null || echo "")
-            
             if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ] && [ "$EXISTING_PR" != "" ]; then
-              echo "PR already exists for this branch"
-              echo "{\"status\": \"already_exists\", \"pr\": $EXISTING_PR}" > "$PR_JSON_FILE"
+              echo "{\"status\":\"already_exists\",\"pr\":$EXISTING_PR}" > "$PR_JSON_FILE"
             else
-              echo "PR creation failed and no existing PR found"
-              # Escape the error message for JSON
               ERROR_MSG=$(echo "$PR_RESULT" | jq -Rs .)
-              echo "{\"status\": \"error\", \"message\": $ERROR_MSG, \"exitCode\": $PR_EXIT_CODE}" > "$PR_JSON_FILE"
+              echo "{\"status\":\"error\",\"message\":$ERROR_MSG,\"exitCode\":$PR_EXIT_CODE}" > "$PR_JSON_FILE"
             fi
           fi
 
-          echo "PR creation process completed"
-          echo "PR info saved to: $PR_JSON_FILE"
-          cat "$PR_JSON_FILE"
+      - name: Create Pull Request (Azure DevOps)
+        if: ${{ always() && github.event.inputs.workspace-git-branch-target != '' && env.WORKSPACE_GIT_PROVIDER == 'azure' }}
+        env:
+          WORKSPACE_GIT_URL: ${{ env.WORKSPACE_GIT_URL_SANITIZED }}
+          WORKSPACE_GIT_BRANCH: ${{ github.event.inputs.workspace-git-branch }}
+          WORKSPACE_GIT_BRANCH_TARGET: ${{ github.event.inputs.workspace-git-branch-target }}
+          WORKSPACE_GIT_TOKEN: ${{ github.event.inputs.workspace-git-token }}
+        run: |
+          set -euo pipefail
+
+          PR_JSON_FILE="${{ github.workspace }}/pr.json"
+
+          if [ -z "${WORKSPACE_GIT_TOKEN:-}" ]; then
+            echo '{"status":"error","message":"workspace-git-token is required for Azure PR creation"}' > "$PR_JSON_FILE"
+            exit 0
+          fi
+
+          if [[ "$WORKSPACE_GIT_URL" =~ ^https://dev\.azure\.com/([^/]+)/([^/]+)/_git/([^/?#]+) ]]; then
+            AZ_ORG="${BASH_REMATCH[1]}"
+            AZ_PROJECT="${BASH_REMATCH[2]}"
+            AZ_REPO="${BASH_REMATCH[3]}"
+            AZ_BASE="https://dev.azure.com/${AZ_ORG}"
+          elif [[ "$WORKSPACE_GIT_URL" =~ ^https://([^.]+)\.visualstudio\.com/([^/]+)/_git/([^/?#]+) ]]; then
+            AZ_ORG="${BASH_REMATCH[1]}"
+            AZ_PROJECT="${BASH_REMATCH[2]}"
+            AZ_REPO="${BASH_REMATCH[3]}"
+            AZ_BASE="https://${AZ_ORG}.visualstudio.com"
+          else
+            echo "{\"status\":\"error\",\"message\":\"unsupported azure repository url: ${WORKSPACE_GIT_URL}\"}" > "$PR_JSON_FILE"
+            exit 0
+          fi
+
+          API_VERSION="7.1"
+          SOURCE_REF="refs/heads/${WORKSPACE_GIT_BRANCH_TARGET}"
+          TARGET_REF="refs/heads/${WORKSPACE_GIT_BRANCH}"
+          AUTH_B64=$(printf ":%s" "$WORKSPACE_GIT_TOKEN" | base64 | tr -d '\n')
+
+          CREATE_URL="${AZ_BASE}/${AZ_PROJECT}/_apis/git/repositories/${AZ_REPO}/pullrequests?api-version=${API_VERSION}"
+          LIST_URL="${AZ_BASE}/${AZ_PROJECT}/_apis/git/repositories/${AZ_REPO}/pullrequests?searchCriteria.status=active&searchCriteria.sourceRefName=${SOURCE_REF}&searchCriteria.targetRefName=${TARGET_REF}&api-version=${API_VERSION}"
+
+          EXISTING=$(curl -sS \
+            -H "Authorization: Basic ${AUTH_B64}" \
+            -H "Content-Type: application/json" \
+            "$LIST_URL")
+
+          EXISTING_COUNT=$(echo "$EXISTING" | jq -r '.count // 0')
+          if [ "$EXISTING_COUNT" != "0" ]; then
+            EXISTING_PR=$(echo "$EXISTING" | jq '.value[0]')
+            echo "{\"status\":\"already_exists\",\"pr\":$EXISTING_PR}" > "$PR_JSON_FILE"
+            exit 0
+          fi
+
+          BODY=$(jq -nc \
+            --arg title "Auto-generated: CodeBuddy changes" \
+            --arg description "Automated changes from CodeBuddy workflow execution." \
+            --arg sourceRefName "$SOURCE_REF" \
+            --arg targetRefName "$TARGET_REF" \
+            '{title:$title,description:$description,sourceRefName:$sourceRefName,targetRefName:$targetRefName}')
+
+          RESP=$(curl -sS -w '\n%{http_code}' \
+            -X POST \
+            -H "Authorization: Basic ${AUTH_B64}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "$CREATE_URL")
+
+          HTTP_CODE=$(echo "$RESP" | tail -n1)
+          RESP_BODY=$(echo "$RESP" | sed '$d')
+
+          if [[ "$HTTP_CODE" =~ ^20[01]$ ]]; then
+            echo "$RESP_BODY" > "$PR_JSON_FILE"
+          else
+            ERR=$(echo "$RESP_BODY" | jq -c . 2>/dev/null || echo "\"$RESP_BODY\"")
+            echo "{\"status\":\"error\",\"httpCode\":\"$HTTP_CODE\",\"response\":$ERR}" > "$PR_JSON_FILE"
+          fi
 
       - name: Upload log artifacts
         if: always()
