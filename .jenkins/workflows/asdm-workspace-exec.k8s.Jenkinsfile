@@ -71,11 +71,6 @@ pipeline {
       choices: ['prompt', 'auto', 'slash-command'],
       description: '默认 prompt=按自然语言处理；auto 根据是否以 / 开头判断'
     )
-    choice(
-      name: 'CREATE_PR',
-      choices: ['false', 'true'],
-      description: 'true：使用 GIT_CLONE_TOKEN 在 CodeBuddy 修改后自动 push 并创建 PR'
-    )
     password(
       name: 'CODEBUDDY_API_KEY_PARAM',
       defaultValue: '',
@@ -431,19 +426,15 @@ ASDM_SCRIPT
       }
     }
 
-    stage('Create PR (optional)') {
+    stage('Create PR') {
       when {
-        allOf {
-          expression { return params.E2E_MODE == 'full' }
-          expression { return params.CREATE_PR == 'true' }
-        }
+        expression { return params.E2E_MODE == 'full' }
       }
       steps {
         script {
           def token = (params.GIT_CLONE_TOKEN ?: '').toString().trim()
           if (!token) {
-            echo '未提供 GIT_CLONE_TOKEN，跳过自动 PR 创建。'
-            return
+            error('未提供 GIT_CLONE_TOKEN，无法执行 push/创建 PR。')
           }
           withEnv(["GIT_CLONE_TOKEN=${token}"]) {
             sh '''bash -s <<'ASDM_SCRIPT'
