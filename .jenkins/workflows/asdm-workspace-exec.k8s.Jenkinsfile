@@ -31,26 +31,21 @@ pipeline {
   parameters {
     string(
       name: 'REPO_URL',
-      defaultValue: 'https://github.com/jasonwang3/parking.git',
+      defaultValue: '',
       description: '目标仓库 Git HTTPS URL（必填；私有库需填 GIT_CLONE_TOKEN）'
     )
     string(name: 'BRANCH', defaultValue: 'main', description: '分支；会 fallback main/master')
     string(
       name: 'WORKSPACE_ID',
-      defaultValue: '12',
+      defaultValue: '',
       description: 'ASDM workspace id（UI 示例：…/workspaces/12）'
     )
     text(
       name: 'PROMPT_CONTENT',
-      defaultValue: '请在仓库根目录新增一个文件 docs/asdm-workspace-e2e.md，内容用中文说明：1) 这个仓库如何在 Jenkins asdm-workspace-exec 流水线下执行 workspace install；2) BASE_URL/ARTIFACT_BASE_URL 的取值（提示：k3d 内宿主机用 host.docker.internal）；3) 本次运行的输出目录为 {RESULT_DIR}。写完后在 {RESULT_DIR}/summary.md 里再输出一句“已完成”。',
+      defaultValue: '',
       description: '传给 codebuddy -p（自然语言）；若以 / 开头则按 workspace 已安装的 slash command 解析'
     )
     string(name: 'GIT_CLONE_TOKEN', defaultValue: '', description: '克隆私有库用的 PAT；公有库留空')
-    password(
-      name: 'GITHUB_TOKEN',
-      defaultValue: '',
-      description: '用于 push 分支 + 创建 PR 的 GitHub token（可留空；优先使用 Jenkins 凭据 id=github-token）'
-    )
     string(
       name: 'ASDM_BASE_URL',
       defaultValue: 'http://host.docker.internal:8880',
@@ -79,7 +74,7 @@ pipeline {
     choice(
       name: 'CREATE_PR',
       choices: ['false', 'true'],
-      description: 'true：若有 GitHub token，则在 CodeBuddy 修改后自动 push 并创建 PR'
+      description: 'true：使用 GIT_CLONE_TOKEN 在 CodeBuddy 修改后自动 push 并创建 PR'
     )
     password(
       name: 'CODEBUDDY_API_KEY_PARAM',
@@ -326,6 +321,10 @@ ASDM_SCRIPT
             RAW=$(cat "${WORKSPACE}/workspace-exec-prompt.txt")
             printf '%s' "$RAW" > "${RESULT_DIR}/prompt.raw.txt"
             TRIMMED=$(printf '%s' "$RAW" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            if [ -z "$TRIMMED" ]; then
+              echo "PROMPT_CONTENT is required when E2E_MODE=full" >&2
+              exit 1
+            fi
             printf '%s' "$TRIMMED" > "${RESULT_DIR}/prompt.resolved.txt"
             MODE="${EXEC_MODE:-auto}"
             if [ "$MODE" = "auto" ]; then
@@ -441,21 +440,12 @@ ASDM_SCRIPT
       }
       steps {
         script {
-          def tokenParam = (params.GITHUB_TOKEN ?: '').toString().trim()
-          def tokenCred = ''
-          try {
-            withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
-              tokenCred = (env.GITHUB_TOKEN ?: '').toString().trim()
-            }
-          } catch (err) {
-            echo "Jenkins credential 'github-token' not found, skipping."
-          }
-          def token = tokenParam ? tokenParam : tokenCred
+          def token = (params.GIT_CLONE_TOKEN ?: '').toString().trim()
           if (!token) {
-            echo '未提供 GitHub token，跳过自动 PR 创建。'
+            echo '未提供 GIT_CLONE_TOKEN，跳过自动 PR 创建。'
             return
           }
-          withEnv(["GITHUB_TOKEN=${token}"]) {
+          withEnv(["GIT_CLONE_TOKEN=${token}"]) {
             sh '''bash -s <<'ASDM_SCRIPT'
               set -euo pipefail
               set -a
@@ -491,7 +481,7 @@ PY
 import os
 from urllib.parse import urlparse, urlunparse, quote
 u=os.environ["CLEAN_URL"]
-t=os.environ["GITHUB_TOKEN"]
+t=os.environ["GIT_CLONE_TOKEN"]
 p=urlparse(u)
 netloc=f"x-access-token:{quote(t, safe='')}@{p.netloc}"
 print(urlunparse((p.scheme,netloc,p.path,"","","")))
@@ -515,7 +505,7 @@ PY
               )
               echo "创建 PR: ${OWNER_REPO} head=${BR} base=${ACTUAL_BRANCH}"
               curl -sS -X POST \
-                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "Authorization: Bearer ${GIT_CLONE_TOKEN}" \
                 -H "Accept: application/vnd.github+json" \
                 "https://api.github.com/repos/${OWNER_REPO}/pulls" \
                 -d "$JSON" > "${RESULT_DIR}/github-pr.json"
