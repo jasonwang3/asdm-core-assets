@@ -453,13 +453,21 @@ ASDM_SCRIPT
               git config user.name "jenkins-bot"
 
               BR="asdm-e2e-${BUILD_NUMBER}"
+              export BR
               git checkout -b "$BR"
               git add -A
+              # 这些是执行时生成的工作区文件，不应进入目标仓库 PR
+              git reset -q .asdm .codebuddy asdm-workspace-exec-result || true
+              if git diff --cached --quiet; then
+                echo "仅有工作区生成文件变更，跳过 PR 创建。"
+                exit 0
+              fi
               git commit -m "chore: asdm workspace e2e output"
 
               # push：使用 token 注入 https remote（不回显 token）
               CLEAN_URL="${REPO_URL}"
               if echo "$CLEAN_URL" | grep -qv '://'; then CLEAN_URL="https://$CLEAN_URL"; fi
+              export CLEAN_URL
               CLEAN_URL=$(python3 - <<'PY'
 import os
 from urllib.parse import urlparse, urlunparse
@@ -484,6 +492,7 @@ PY
               OWNER_REPO=$(echo "$CLEAN_URL" | sed -E 's#https?://[^/]+/##' | sed 's/\\.git$//')
               TITLE="ASDM workspace E2E changes"
               BODY="自动化 E2E（workspace install + codebuddy）产物提交。Build #${BUILD_NUMBER}。"
+              export TITLE BODY
               JSON=$(python3 - <<'PY'
 import json, os
 print(json.dumps({
