@@ -279,7 +279,11 @@ ASDM_SCRIPT
                 echo "未设置 ASDM_API_TOKEN：如 workspace install 报 401，请在 Jenkins 添加 Secret text 凭据 id=asdm-api-token，或在参数 ASDM_API_TOKEN 传入。"
               fi
               asdm config --set-base-url "${ASDM_BASE_URL_PARAM}"
-              asdm config --set-artifact-base-url "${ASDM_ARTIFACT_BASE_URL_PARAM}"
+              if asdm config --help 2>&1 | grep -q -- '--set-artifact-base-url'; then
+                asdm config --set-artifact-base-url "${ASDM_ARTIFACT_BASE_URL_PARAM}"
+              else
+                echo "当前 asdm CLI 不支持 --set-artifact-base-url，使用环境变量 ARTIFACT_BASE_URL=${ASDM_ARTIFACT_BASE_URL_PARAM}"
+              fi
               asdm config || true
               asdm workspace install "${WS_ID}"
               asdm workspace switch "${WS_ID}"
@@ -363,6 +367,7 @@ ASDM_SCRIPT
               set +a
               cd "${WORKSPACE}/${REPO_NAME}"
               LOG_FILE="${WORKSPACE}/workspace-exec.log"
+              HUMAN_FILE="${RESULT_DIR}/workspace-exec.human.txt"
               if [ -n "${CODEBUDDY_LOG_PARSER:-}" ] && [ -f "${CODEBUDDY_LOG_PARSER}" ]; then
                 PARSER="${CODEBUDDY_LOG_PARSER}"
               elif [ -f /opt/codebuddy-log-parser/dist/index.js ]; then
@@ -380,7 +385,7 @@ ASDM_SCRIPT
               export CODEBUDDY_INTERNET_ENVIRONMENT="${CODEBUDDY_INTERNET_ENVIRONMENT:-}"
               mkdir -p "$RESULT_DIR"
               set +e
-              codebuddy -p "$FINAL_PROMPT" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+              codebuddy -p "$FINAL_PROMPT" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color | tee "$HUMAN_FILE"
               CB=${PIPESTATUS[0]}
               set -e
               exit "$CB"
@@ -426,6 +431,59 @@ ASDM_SCRIPT
         }
       }
 
+      stage('Ensure output file') {
+        when {
+          expression { return params.E2E_MODE == 'full' }
+        }
+        steps {
+          sh '''bash -s <<'ASDM_SCRIPT'
+            set -euo pipefail
+            set -a
+            . "${WORKSPACE}/.asdm_clone_env"
+            set +a
+            cd "${WORKSPACE}/${REPO_NAME}"
+
+            FINAL_PROMPT_FILE="${WORKSPACE}/.workspace_exec_prompt_final.txt"
+            if [ ! -f "$FINAL_PROMPT_FILE" ]; then
+              echo "缺少最终提示词文件：$FINAL_PROMPT_FILE，跳过兜底输出。"
+              exit 0
+            fi
+
+            FINAL_PROMPT="$(cat "$FINAL_PROMPT_FILE")"
+            # 从提示词中提取第一个 *.md 文件名（例如 review.md）
+            OUT_MD="$(printf '%s' "$FINAL_PROMPT" | grep -Eo '[A-Za-z0-9_.-]+\\.md' | head -n 1 || true)"
+            if [ -z "$OUT_MD" ]; then
+              echo "提示词未包含明确的 .md 文件名，跳过兜底输出。"
+              exit 0
+            fi
+
+            # 统一只在仓库根目录落盘（避免写到 RESULT_DIR 被 PR 阶段 reset）
+            TARGET_PATH="${WORKSPACE}/${REPO_NAME}/${OUT_MD}"
+            if [ -f "$TARGET_PATH" ] && [ -s "$TARGET_PATH" ]; then
+              echo "已检测到输出文件存在：$OUT_MD"
+              exit 0
+            fi
+
+            HUMAN_FILE="${RESULT_DIR}/workspace-exec.human.txt"
+            if [ ! -f "$HUMAN_FILE" ] || [ ! -s "$HUMAN_FILE" ]; then
+              echo "未找到可用的人类可读输出（$HUMAN_FILE），无法兜底生成 $OUT_MD" >&2
+              exit 1
+            fi
+
+            echo "未检测到 $OUT_MD，使用 CodeBuddy 输出兜底生成到仓库根目录。"
+            cat > "$TARGET_PATH" <<'EOF_MD'
+# Workspace 执行输出（兜底生成）
+
+> 说明：流水线检测到提示词要求生成 Markdown 文件，但工作区内未找到目标文件；因此将 CodeBuddy 的人类可读输出落盘，以确保结果可追溯且可进入 PR。
+
+EOF_MD
+            cat "$HUMAN_FILE" >> "$TARGET_PATH"
+            test -s "$TARGET_PATH"
+ASDM_SCRIPT
+          '''
+        }
+      }
+
       stage('Create PR') {
         when {
           expression { return params.E2E_MODE == 'full' }
@@ -447,8 +505,9 @@ ASDM_SCRIPT
                 set +a
                 cd "${WORKSPACE}/${REPO_NAME}"
 
-                if git diff --quiet && git diff --cached --quiet; then
-                  echo "仓库无改动，跳过 PR 创建。"
+                # git diff 不包含 untracked 文件；这里用 git status 判断是否有任何变更（含新文件）。
+                if [ -z "$(git status --porcelain)" ]; then
+                  echo "仓库无改动（含 untracked 检查），跳过 PR 创建。"
                   exit 0
                 fi
 
