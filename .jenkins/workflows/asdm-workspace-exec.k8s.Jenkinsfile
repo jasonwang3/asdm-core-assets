@@ -36,6 +36,11 @@ pipeline {
     )
     string(name: 'BRANCH', defaultValue: 'main', description: '分支；会 fallback main/master')
     string(
+      name: 'TARGET_BRANCH',
+      defaultValue: '',
+      description: 'PR 目标 head 分支名（可选；为空则自动生成 asdm-e2e-${BUILD_NUMBER}）'
+    )
+    string(
       name: 'WORKSPACE_ID',
       defaultValue: '',
       description: 'ASDM workspace id（UI 示例：…/workspaces/12）'
@@ -436,7 +441,10 @@ ASDM_SCRIPT
           if (!token) {
             error('未提供 GIT_CLONE_TOKEN，无法执行 push/创建 PR。')
           }
-          withEnv(["GIT_CLONE_TOKEN=${token}"]) {
+          withEnv([
+            "GIT_CLONE_TOKEN=${token}",
+            "TARGET_BRANCH=${params.TARGET_BRANCH?.trim() ?: ''}"
+          ]) {
             sh '''bash -s <<'ASDM_SCRIPT'
               set -euo pipefail
               set -a
@@ -452,7 +460,8 @@ ASDM_SCRIPT
               git config user.email "jenkins@local"
               git config user.name "jenkins-bot"
 
-              BR="asdm-e2e-${BUILD_NUMBER}"
+              TARGET_BRANCH_TRIMMED="$(echo "${TARGET_BRANCH:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+              BR="${TARGET_BRANCH_TRIMMED:-asdm-e2e-${BUILD_NUMBER}}"
               export BR
               git checkout -b "$BR"
               git add -A
