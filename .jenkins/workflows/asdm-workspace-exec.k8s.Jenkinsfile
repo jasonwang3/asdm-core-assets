@@ -81,6 +81,7 @@
         defaultValue: '',
         description: 'CodeBuddy API Key（留空则用 Jenkins 凭据 id=codebuddy-api-key）'
       )
+      // 归档产物默认会过滤掉 prompt/meta 等调试文件（见 post/always 打包逻辑）
     }
 
     stages {
@@ -470,7 +471,8 @@ ASDM_SCRIPT
                 git checkout -b "$BR"
                 git add -A
                 # 这些是执行时生成的工作区文件，不应进入目标仓库 PR
-                git reset -q .asdm .codebuddy asdm-workspace-exec-result || true
+                # 注意：必须使用 `--` 明确 pathspec；否则 git 可能把参数当成 revision，且这里的 `|| true` 会吞掉错误导致未生效
+                git reset -q -- .asdm .codebuddy asdm-workspace-exec-result || true
                 if git diff --cached --quiet; then
                   echo "仅有工作区生成文件变更，跳过 PR 创建。"
                   exit 0
@@ -617,6 +619,7 @@ ASDM_SCRIPT
             . "${WORKSPACE}/.asdm_clone_env"
             set +a
             cd "${WORKSPACE}"
+            # Artifacts 允许保留执行过程文件；这里直接归档整个 result 目录
             tar czf asdm-workspace-exec-result.tgz -C "${WORKSPACE}/${REPO_NAME}" asdm-workspace-exec-result 2>/dev/null || true
           fi
 ASDM_SCRIPT
