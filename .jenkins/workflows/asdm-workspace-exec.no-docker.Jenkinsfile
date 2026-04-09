@@ -49,12 +49,12 @@
       string(name: 'GIT_CLONE_TOKEN', defaultValue: '', description: '克隆私有库用的 PAT；公有库留空')
       string(
         name: 'ASDM_BASE_URL',
-        defaultValue: 'http://127.0.0.1:8880',
+        defaultValue: 'https://platform-sit01.asdm.ai',
         description: 'ASDM 平台根地址；会写入 asdm config 并 export BASE_URL 供 CLI 使用（no-docker 默认本机 127.0.0.1）'
       )
       string(
         name: 'ASDM_ARTIFACT_BASE_URL',
-        defaultValue: 'https://platform-dt01.asdm.ai/_artifacts',
+        defaultValue: 'https://platform-sit01.asdm.ai/_artifacts',
         description: '制品基地址；会写入 asdm config 并 export ARTIFACT_BASE_URL 供 CLI 下载资源'
       )
       password(
