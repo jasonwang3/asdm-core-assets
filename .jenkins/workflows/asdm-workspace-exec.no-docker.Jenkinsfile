@@ -141,40 +141,40 @@ ASDM_SCRIPT
               set -euo pipefail
               CLONE_URL=$(REPO_URL="$REPO_URL" GIT_CLONE_TOKEN="${GIT_CLONE_TOKEN:-}" \
                 python3 << 'PY'
-  import os
-  from urllib.parse import urlparse, urlunparse, quote
+import os
+from urllib.parse import urlparse, urlunparse, quote
 
-  raw = os.environ.get("REPO_URL", "").strip()
-  token = (os.environ.get("GIT_CLONE_TOKEN") or "").strip()
+raw = os.environ.get("REPO_URL", "").strip()
+token = (os.environ.get("GIT_CLONE_TOKEN") or "").strip()
 
-  if not raw:
-      raise SystemExit("REPO_URL is empty")
+if not raw:
+  raise SystemExit("REPO_URL is empty")
 
-  if "://" not in raw:
-      raw = "https://" + raw
+if "://" not in raw:
+  raw = "https://" + raw
 
-  p = urlparse(raw)
-  if p.scheme not in ("http", "https"):
-      raise SystemExit("Only http(s) repository URLs are supported")
+p = urlparse(raw)
+if p.scheme not in ("http", "https"):
+  raise SystemExit("Only http(s) repository URLs are supported")
 
-  host = (p.hostname or "").lower()
-  hostport = f"{p.hostname}:{p.port}" if p.port else (p.hostname or "")
-  path = p.path.rstrip("/") or "/"
+host = (p.hostname or "").lower()
+hostport = f"{p.hostname}:{p.port}" if p.port else (p.hostname or "")
+path = p.path.rstrip("/") or "/"
 
-  if token:
-      if "github.com" in host:
-          netloc = f"x-access-token:{quote(token, safe='')}@{hostport}"
-      elif "gitlab" in host:
-          netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
-      else:
-          netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
+if token:
+  if "github.com" in host:
+      netloc = f"x-access-token:{quote(token, safe='')}@{hostport}"
+  elif "gitlab" in host:
+      netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
   else:
-      netloc = p.netloc
+      netloc = f"oauth2:{quote(token, safe='')}@{hostport}"
+else:
+  netloc = p.netloc
 
-  if not path.endswith(".git"):
-      path = path + ".git"
+if not path.endswith(".git"):
+  path = path + ".git"
 
-  print(urlunparse((p.scheme, netloc, path, "", "", "")))
+print(urlunparse((p.scheme, netloc, path, "", "", "")))
 PY
               )
 
@@ -473,21 +473,21 @@ ASDM_SCRIPT
                 if echo "$CLEAN_URL" | grep -qv '://'; then CLEAN_URL="https://$CLEAN_URL"; fi
                 export CLEAN_URL
                 CLEAN_URL=$(python3 - <<'PY'
-  import os
-  from urllib.parse import urlparse, urlunparse
-  u=os.environ["CLEAN_URL"]
-  p=urlparse(u)
-  print(urlunparse((p.scheme,p.netloc,p.path,"","","")))
+import os
+from urllib.parse import urlparse, urlunparse
+u=os.environ["CLEAN_URL"]
+p=urlparse(u)
+print(urlunparse((p.scheme,p.netloc,p.path,"","","")))
 PY
                 )
                 PUSH_URL=$(python3 - <<'PY'
-  import os
-  from urllib.parse import urlparse, urlunparse, quote
-  u=os.environ["CLEAN_URL"]
-  t=os.environ["GIT_CLONE_TOKEN"]
-  p=urlparse(u)
-  netloc=f"x-access-token:{quote(t, safe='')}@{p.netloc}"
-  print(urlunparse((p.scheme,netloc,p.path,"","","")))
+import os
+from urllib.parse import urlparse, urlunparse, quote
+u=os.environ["CLEAN_URL"]
+t=os.environ["GIT_CLONE_TOKEN"]
+p=urlparse(u)
+netloc=f"x-access-token:{quote(t, safe='')}@{p.netloc}"
+print(urlunparse((p.scheme,netloc,p.path,"","","")))
 PY
                 )
                 git push "$PUSH_URL" "HEAD:$BR"
@@ -498,13 +498,13 @@ PY
                 BODY="自动化 E2E（workspace install + codebuddy）产物提交。Build #${BUILD_NUMBER}。"
                 export TITLE BODY
                 JSON=$(python3 - <<'PY'
-  import json, os
-  print(json.dumps({
-    "title": os.environ["TITLE"],
-    "head": os.environ["BR"],
-    "base": os.environ["ACTUAL_BRANCH"],
-    "body": os.environ["BODY"],
-  }, ensure_ascii=False))
+import json, os
+print(json.dumps({
+  "title": os.environ["TITLE"],
+  "head": os.environ["BR"],
+  "base": os.environ["ACTUAL_BRANCH"],
+  "body": os.environ["BODY"],
+}, ensure_ascii=False))
 PY
                 )
                 echo "创建 PR: ${OWNER_REPO} head=${BR} base=${ACTUAL_BRANCH}"
