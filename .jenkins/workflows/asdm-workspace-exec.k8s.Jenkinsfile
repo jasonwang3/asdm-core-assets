@@ -517,8 +517,8 @@ PY
                 -H "Authorization: Bearer ${GIT_CLONE_TOKEN}" \
                 -H "Accept: application/vnd.github+json" \
                 "https://api.github.com/repos/${OWNER_REPO}/pulls" \
-                -d "$JSON" > "${RESULT_DIR}/github-pr.json"
-              cat "${RESULT_DIR}/github-pr.json" | head -c 800 || true
+                -d "$JSON" > "${RESULT_DIR}/pr.json"
+              cat "${RESULT_DIR}/pr.json" | head -c 800 || true
 ASDM_SCRIPT
             '''
           }
