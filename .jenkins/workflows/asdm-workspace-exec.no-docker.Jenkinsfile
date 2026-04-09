@@ -93,7 +93,7 @@
             codebuddy --version
             command -v asdm >/dev/null 2>&1 || { echo "缺少 asdm 命令：请在 Jenkins 节点安装 asdm CLI" >&2; exit 1; }
             asdm --version
-  ASDM_SCRIPT
+ASDM_SCRIPT
           '''
         }
       }
@@ -106,7 +106,7 @@
               if [ -f /opt/codebuddy-log-parser/dist/index.js ]; then exit 0; fi
               if [ -n "${CODEBUDDY_LOG_PARSER:-}" ] && [ -f "${CODEBUDDY_LOG_PARSER}" ]; then exit 0; fi
               exit 1
-  ASDM_SCRIPT
+ASDM_SCRIPT
             ''', returnStatus: true) == 0
             if (skip) {
               echo '使用镜像内/节点内预装的 codebuddy-log-parser，跳过本阶段'
@@ -214,7 +214,7 @@
               set +a
               cd "${WORKSPACE}/${REPO_NAME}"
               git log -1 --oneline > "${WORKSPACE}/.asdm_git_head.txt"
-  ASDM_SCRIPT
+ASDM_SCRIPT
             '''
           }
           script {
@@ -234,7 +234,7 @@
             RESULT_DIR="$(pwd)/asdm-workspace-exec-result"
             mkdir -p "$RESULT_DIR"
             printf 'export RESULT_DIR=%q\n' "$RESULT_DIR" >> "${WORKSPACE}/.asdm_clone_env"
-  ASDM_SCRIPT
+ASDM_SCRIPT
           '''
         }
       }
@@ -290,7 +290,7 @@
                 asdm workspace current > "${RESULT_DIR}/workspace-current.txt" 2>&1 || true
                 cp -a .asdm/workspace-installs.json "${RESULT_DIR}/workspace-installs.json.copy" 2>/dev/null || true
               fi
-  ASDM_SCRIPT
+ASDM_SCRIPT
               '''
             }
           }
@@ -329,7 +329,7 @@
                 esac
               fi
               printf '{"execution_mode":"%s","e2e_mode":"%s"}\n' "$MODE" "${E2E_MODE_SHELL}" > "${RESULT_DIR}/prompt-meta.json"
-  ASDM_SCRIPT
+ASDM_SCRIPT
             '''
           }
         }
@@ -351,7 +351,7 @@
               RESOLVED=$(cat "${RESULT_DIR}/prompt.resolved.txt")
               RESOLVED="${RESOLVED//\\{RESULT_DIR\\}/$RESULT_DIR}"
               printf '%s' "$RESOLVED" > "${WORKSPACE}/.workspace_exec_prompt_final.txt"
-  ASDM_SCRIPT
+ASDM_SCRIPT
               '''
               echo '=== 最终提示词 ==='
               echo readFile(encoding: 'UTF-8', file: "${env.WORKSPACE}/.workspace_exec_prompt_final.txt")
@@ -384,7 +384,7 @@
               CB=${PIPESTATUS[0]}
               set -e
               exit "$CB"
-  ASDM_SCRIPT
+ASDM_SCRIPT
               '''
             }
             try {
@@ -514,7 +514,7 @@
                   "https://api.github.com/repos/${OWNER_REPO}/pulls" \
                   -d "$JSON" > "${RESULT_DIR}/pr.json"
                 cat "${RESULT_DIR}/pr.json" | head -c 800 || true
-  ASDM_SCRIPT
+ASDM_SCRIPT
               '''
             }
           }
@@ -543,7 +543,7 @@
               cat "$LOG_FILE" | node "$PARSER" --stdin -f human-chat --no-color 2>/dev/null || true
               cat "$LOG_FILE" | node "$PARSER" --stdin -f json > "$RESULT_DIR/analysis-log.json" 2>/dev/null || true
             fi
-  ASDM_SCRIPT
+ASDM_SCRIPT
           '''
         }
       }
@@ -580,7 +580,7 @@
   }
   EOF2
               cat "$RESULT_DIR/metadata.json"
-  ASDM_SCRIPT
+ASDM_SCRIPT
             '''
           }
         }
@@ -610,7 +610,7 @@
             cd "${WORKSPACE}"
             tar czf asdm-workspace-exec-result.tgz -C "${WORKSPACE}/${REPO_NAME}" asdm-workspace-exec-result 2>/dev/null || true
           fi
-  ASDM_SCRIPT
+ASDM_SCRIPT
         '''
         archiveArtifacts artifacts: 'asdm-workspace-exec-result.tgz', fingerprint: true, allowEmptyArchive: true
       }
