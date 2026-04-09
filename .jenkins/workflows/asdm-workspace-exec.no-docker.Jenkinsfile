@@ -175,7 +175,7 @@ ASDM_SCRIPT
       path = path + ".git"
 
   print(urlunparse((p.scheme, netloc, path, "", "", "")))
-  PY
+PY
               )
 
               REPO_NAME=$(echo "$REPO_URL" | sed 's/.*\\///' | sed 's/\\.git$//')
@@ -478,7 +478,7 @@ ASDM_SCRIPT
   u=os.environ["CLEAN_URL"]
   p=urlparse(u)
   print(urlunparse((p.scheme,p.netloc,p.path,"","","")))
-  PY
+PY
                 )
                 PUSH_URL=$(python3 - <<'PY'
   import os
@@ -488,7 +488,7 @@ ASDM_SCRIPT
   p=urlparse(u)
   netloc=f"x-access-token:{quote(t, safe='')}@{p.netloc}"
   print(urlunparse((p.scheme,netloc,p.path,"","","")))
-  PY
+PY
                 )
                 git push "$PUSH_URL" "HEAD:$BR"
 
@@ -505,7 +505,7 @@ ASDM_SCRIPT
     "base": os.environ["ACTUAL_BRANCH"],
     "body": os.environ["BODY"],
   }, ensure_ascii=False))
-  PY
+PY
                 )
                 echo "创建 PR: ${OWNER_REPO} head=${BR} base=${ACTUAL_BRANCH}"
                 curl -sS -X POST \
@@ -578,7 +578,7 @@ ASDM_SCRIPT
       "result_directory": "${RESULT_DIR}"
     }
   }
-  EOF2
+EOF2
               cat "$RESULT_DIR/metadata.json"
 ASDM_SCRIPT
             '''
