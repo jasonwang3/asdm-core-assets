@@ -1,43 +1,43 @@
-name: Package Skills
+name: Package MCPs
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'asdm-core-assets/skills/**'
+      - 'asdm-core-assets/mcps/**'
   pull_request:
     branches:
       - main
     paths:
-      - 'asdm-core-assets/skills/**'
+      - 'asdm-core-assets/mcps/**'
   workflow_dispatch:
 
 jobs:
-  package-skills:
+  package-mcps:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create zip files for each skill
+      - name: Create zip files for each MCP
         run: |
-          SKILLS_DIR="asdm-core-assets/skills"
-          OUTPUT_DIR="$GITHUB_WORKSPACE/packaged-skills"
+          MCPS_DIR="asdm-core-assets/mcps"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/packaged-mcps"
           
           # Create a directory to store zip files
           mkdir -p "$OUTPUT_DIR"
           
-          # Loop through each subdirectory in skills
-          for dir in "$SKILLS_DIR"/*/; do
+          # Loop through each subdirectory in mcps
+          for dir in "$MCPS_DIR"/*/; do
             if [ -d "$dir" ]; then
               # Get the directory name
               dirname=$(basename "$dir")
-              echo "Packaging skill: $dirname"
+              echo "Packaging MCP: $dirname"
               
               # Create zip file
-              (cd "$SKILLS_DIR" && zip -r "$OUTPUT_DIR/${dirname}.zip" "$dirname")
+              (cd "$MCPS_DIR" && zip -r "$OUTPUT_DIR/${dirname}.zip" "$dirname")
             fi
           done
           
@@ -45,11 +45,11 @@ jobs:
           echo "Created zip files:"
           ls -la "$OUTPUT_DIR/"
 
-      - name: Upload skill artifacts
+      - name: Upload MCP artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: skills-packages
-          path: packaged-skills/*.zip
+          name: mcps-packages
+          path: packaged-mcps/*.zip
           retention-days: 30
 
       # Deploy to SIT01 environment
@@ -72,13 +72,13 @@ jobs:
           echo "Using SSH port: $PORT"
           
           # Create remote directory
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/skills"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/mcps"
             
           # Upload files
           sshpass -p "$SSH_PASSWORD" rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no -p $SSH_PORT" \
-            packaged-skills/ \
-            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/skills/
+            packaged-mcps/ \
+            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/mcps/
           
           echo "Deployed toolsets to SIT01 successfully"
 
@@ -101,13 +101,13 @@ jobs:
           echo "Using SSH port: $PORT"
           
           # Create remote directory
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/packaged-skills"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/packaged-mcps"
             
           # Upload files
           sshpass -p "$SSH_PASSWORD" rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no -p $SSH_PORT" \
-            packaged-skills/ \
-            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/skills/
+            packaged-mcps/ \
+            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/mcps/
           
           echo "Deployed toolsets to DT01 successfully"
 
@@ -130,12 +130,12 @@ jobs:
           echo "Using SSH port: $PORT"
           
           # Create remote directory
-          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/skills"
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $ARTIFACTS_DIR/mcps"
             
           # Upload files
           sshpass -p "$SSH_PASSWORD" rsync -avz --delete \
             -e "ssh -o StrictHostKeyChecking=no -p $SSH_PORT" \
-            packaged-skills/ \
-            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/skills/
+            packaged-mcps/ \
+            $SSH_USER@$SSH_HOST:$ARTIFACTS_DIR/mcps/
           
           echo "Deployed toolsets to PROD successfully"
