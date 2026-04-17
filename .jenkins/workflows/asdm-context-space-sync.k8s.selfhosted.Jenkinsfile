@@ -235,7 +235,7 @@ ASDM_SCRIPT
             ANALYSIS_PROMPT=$(cat "${WORKSPACE}/.analysis_prompt_resolved.txt")
             export CODEBUDDY_API_KEY
             export CODEBUDDY_INTERNET_ENVIRONMENT="${CODEBUDDY_INTERNET_ENVIRONMENT:-}"
-            export CODEBUDDY_MODEL="deepseek-v3.2-aicoding"
+            export CODEBUDDY_MODEL="glm-5"
             mkdir -p "${HOME}/.codebuddy"
             cat > "${HOME}/.codebuddy/settings.json" << EOF2
 {
@@ -276,6 +276,7 @@ ASDM_SCRIPT
           withEnv([
             "CODEBUDDY_API_KEY=${effectiveApiKey}",
             "CODEBUDDY_INTERNET_ENVIRONMENT=${env.CODEBUDDY_INTERNET_ENVIRONMENT ?: 'selfhosted'}"
+            "CODEBUDDY_CODE_SUBAGENT_MODEL=glm-5"
           ]) {
             runAnalyze()
           }

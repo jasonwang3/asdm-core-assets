@@ -15,8 +15,16 @@ on:
         required: false
         default: 'main'
         type: string
-      prompt-content:
-        description: 'Analysis prompt content from promote file'
+      toolset-id:
+        description: 'Toolset id (library_context_items.toolset_id)'
+        required: true
+        type: string
+      toolset-command:
+        description: 'Toolset slash command (e.g. /ctx-repo-scan-zh) or "asdm toolset run <id>"'
+        required: true
+        type: string
+      install-toolsets-prompt:
+        description: 'install-toolsets-prompt.md content (will be executed by CodeBuddy)'
         required: true
         type: string
       github-token:
@@ -56,6 +64,12 @@ jobs:
           cd tools/codebuddy-log-parser
           npm install
           npm run build
+
+      - name: Install ASDM CLI
+        run: |
+          npm install -g @leansoftx/asdm-bootstrapper-cli
+          asdm --version
+          asdm config --set-mock y
 
       - name: Clone target repository
         id: clone-repo
@@ -175,30 +189,68 @@ jobs:
           CODEBUDDY_BASE_URL: ${{ secrets.CODEBUDDY_BASE_URL }}
           CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
           REPO_NAME: ${{ steps.clone-repo.outputs.REPO_NAME }}
-          RESULT_DIR: ${{ steps.create-result-dir.outputs.RESULT_DIR }}
-          PROMPT_CONTENT: ${{ inputs.prompt-content }}
+          TOOLSET_ID: ${{ inputs.toolset-id }}
+          TOOLSET_COMMAND: ${{ inputs.toolset-command }}
+          INSTALL_TOOLSETS_PROMPT: ${{ inputs.install-toolsets-prompt }}
         run: |
           cd "$REPO_NAME"
 
           LOG_FILE="${{ github.workspace }}/analysis.log"
+          INSTALL_LOG_FILE="${{ github.workspace }}/install-toolsets.log"
           PARSER="${{ github.workspace }}/tools/codebuddy-log-parser/dist/index.js"
 
-          echo "Using prompt content from input (promote file)"
-          
-          # Replace {RESULT_DIR} placeholder in prompt if present
-          ANALYSIS_PROMPT="${PROMPT_CONTENT//{RESULT_DIR}/$RESULT_DIR}"
+          echo "=== asdm --version ==="
+          asdm --version
+          echo "=== asdm config --set-mock y ==="
+          asdm config --set-mock y
 
-          echo "=== Prompt Content ==="
-          echo "$ANALYSIS_PROMPT"
-          echo "=== End of Prompt ==="
-          echo ""
+          echo "=== asdm toolset install ${TOOLSET_ID} ==="
+          asdm toolset install "$TOOLSET_ID"
 
-          echo "=== Starting CodeBuddy Analysis ==="
-          echo "Repository: $REPO_NAME"
-          echo "Result directory: $RESULT_DIR"
-          echo ""
+          echo "=== Prepare install-toolsets-prompt.md ==="
+          printf '%s' "$INSTALL_TOOLSETS_PROMPT" > "install-toolsets-prompt.md"
 
-          eval "codebuddy -p \"$ANALYSIS_PROMPT\" -y --output-format stream-json" 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+          echo "=== codebuddy run install-toolsets-prompt.md ==="
+          set +e
+          codebuddy -p "运行 install-toolsets-prompt.md" -y --output-format stream-json 2>&1 | tee "$INSTALL_LOG_FILE"
+          CB_INSTALL=${PIPESTATUS[0]}
+          set -e
+          if [ "$CB_INSTALL" -ne 0 ]; then
+            echo "CodeBuddy install prompt failed (exit=$CB_INSTALL)" >&2
+            exit "$CB_INSTALL"
+          fi
+
+          TOOLSET_SLASH_CMD="$TOOLSET_COMMAND"
+          # Normalize to slash command:
+          # - "/ctx-xxx" => "/ctx-xxx"
+          # - "asdm toolset run ctx-xxx" => "/ctx-xxx"
+          if [[ "$TOOLSET_SLASH_CMD" != /* ]]; then
+            if [[ "$TOOLSET_SLASH_CMD" == asdm\ toolset\ run\ * ]]; then
+              TOOLSET_SLASH_CMD="/${TOOLSET_SLASH_CMD##*run }"
+            else
+              TOOLSET_SLASH_CMD="/$TOOLSET_SLASH_CMD"
+            fi
+          fi
+
+          echo "=== codebuddy run toolset: ${TOOLSET_SLASH_CMD} ==="
+          : > "$LOG_FILE"
+          set +e
+          codebuddy -p "$TOOLSET_SLASH_CMD" -y --output-format stream-json 2>&1 | tee "$LOG_FILE" | node "$PARSER" --stdin --stream -f human-chat --no-color
+          CB=${PIPESTATUS[0]}
+          set -e
+          if [ "$CB" -eq 0 ]; then
+            # Some toolsets (e.g. context-builder) write to `.asdm/contexts/index.md`.
+            # Normalize to the required fixed output path `.codebuddy/contexts/index.md`.
+            if [ ! -s ".codebuddy/contexts/index.md" ] && [ -s ".asdm/contexts/index.md" ]; then
+              mkdir -p ".codebuddy/contexts"
+              cp ".asdm/contexts/index.md" ".codebuddy/contexts/index.md"
+            fi
+            if [ ! -s ".codebuddy/contexts/index.md" ]; then
+              echo "Missing or empty output: $(pwd)/.codebuddy/contexts/index.md" >&2
+              CB=1
+            fi
+          fi
+          exit "$CB"
 
       - name: Parse final log
         if: always()
@@ -258,7 +310,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: asdm-context-space-result
-          path: ${{ steps.clone-repo.outputs.REPO_NAME }}/asdm-context-space-result/
+          path: ${{ steps.clone-repo.outputs.REPO_NAME }}/.codebuddy/contexts/index.md
           retention-days: 30
 
       - name: Summary
@@ -271,7 +323,6 @@ jobs:
           echo "======================================"
           echo "Repository: ${{ inputs.repo-url }}"
           echo "Branch: ${{ steps.clone-repo.outputs.ACTUAL_BRANCH }}"
-          echo "Prompt Type: ${{ inputs.prompt-type }}"
           echo "Result directory: ${{ steps.create-result-dir.outputs.RESULT_DIR }}"
           echo ""
           echo "Artifacts:"
